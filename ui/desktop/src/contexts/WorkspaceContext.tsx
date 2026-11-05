@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import type { OpenFileTab } from '../types/fileSystem';
+import type { OpenFileTab, ProposedFileDiff } from '../types/fileSystem';
+import { computeDiffStats } from '../components/Editor/diffUtils';
+import { resolveAcpPermissionRequest } from '../acp/permissionRequests';
+import { AppEvents } from '../constants/events';
 
 interface WorkspaceContextType {
   workspacePath: string;
@@ -23,6 +26,11 @@ interface WorkspaceContextType {
   setIsEditorVisible: React.Dispatch<React.SetStateAction<boolean>>;
   chatWidth: number;
   setChatWidth: (value: number | ((prev: number) => number)) => void;
+  pendingDiff: ProposedFileDiff | null;
+  setPendingDiff: React.Dispatch<React.SetStateAction<ProposedFileDiff | null>>;
+  proposeDiff: (diff: Omit<ProposedFileDiff, 'diffStats'>) => Promise<void>;
+  acceptPendingDiff: () => Promise<boolean>;
+  rejectPendingDiff: () => void;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
@@ -44,6 +52,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [openFiles, setOpenFiles] = useState<OpenFileTab[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState<boolean>(true);
+  const [pendingDiff, setPendingDiff] = useState<ProposedFileDiff | null>(null);
 
   const [chatWidth, setChatWidthState] = useState<number>(() => {
     try {
@@ -173,14 +182,19 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         return next;
       });
+      // If closing the file with a pending diff, clear the diff
+      if (pendingDiff?.filePath === filePath) {
+        setPendingDiff(null);
+      }
     },
-    [activeFilePath]
+    [activeFilePath, pendingDiff]
   );
 
   const closeAllFiles = useCallback(() => {
     setOpenFiles([]);
     setActiveFilePath(null);
     setSelectedFile(null);
+    setPendingDiff(null);
   }, []);
 
   const updateFileContent = useCallback((filePath: string, content: string) => {
@@ -231,6 +245,110 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saveFile(activeFilePath);
   }, [activeFilePath, saveFile]);
 
+  const proposeDiff = useCallback(
+    async (diffInput: Omit<ProposedFileDiff, 'diffStats'>) => {
+      let original = diffInput.originalContent;
+      // If original content is empty, try reading the actual file if it exists
+      if (!original && window.electron?.workspaceReadFile) {
+        try {
+          const res = await window.electron.workspaceReadFile(diffInput.filePath);
+          if (res?.found && res.content) {
+            original = res.content;
+          }
+        } catch {
+          // Keep as empty
+        }
+      }
+
+      let proposed = diffInput.proposedContent;
+      if (!proposed && diffInput.beforeText && diffInput.afterText) {
+        proposed = original.replace(diffInput.beforeText, diffInput.afterText);
+      }
+
+      const stats = computeDiffStats(original, proposed);
+      const fullDiff: ProposedFileDiff = {
+        ...diffInput,
+        originalContent: original,
+        proposedContent: proposed,
+        diffStats: stats,
+      };
+
+      setPendingDiff(fullDiff);
+      setIsEditorVisible(true);
+      await openFile(fullDiff.filePath);
+    },
+    [openFile]
+  );
+
+  const acceptPendingDiff = useCallback(async (): Promise<boolean> => {
+    if (!pendingDiff) return false;
+    const { filePath, proposedContent, toolApprovalData } = pendingDiff;
+
+    try {
+      // 1. Update in openFiles
+      setOpenFiles((prev) =>
+        prev.map((tab) =>
+          tab.path === filePath
+            ? { ...tab, content: proposedContent, originalContent: proposedContent, isDirty: false }
+            : tab
+        )
+      );
+
+      // 2. Save to disk
+      if (window.electron?.workspaceCreateFile) {
+        await window.electron.workspaceCreateFile(filePath, proposedContent);
+      }
+
+      // 3. If there is ACP tool approval data, approve it!
+      if (toolApprovalData) {
+        resolveAcpPermissionRequest(
+          toolApprovalData.sessionId,
+          toolApprovalData.id,
+          toolApprovalData.generation,
+          'allow_once'
+        );
+      }
+
+      refreshWorkspace();
+      setPendingDiff(null);
+      return true;
+    } catch (err) {
+      console.error('Failed to accept pending diff:', err);
+      return false;
+    }
+  }, [pendingDiff, refreshWorkspace]);
+
+  const rejectPendingDiff = useCallback(() => {
+    if (!pendingDiff) return;
+    const { toolApprovalData } = pendingDiff;
+
+    if (toolApprovalData) {
+      resolveAcpPermissionRequest(
+        toolApprovalData.sessionId,
+        toolApprovalData.id,
+        toolApprovalData.generation,
+        'deny_once'
+      );
+    }
+
+    setPendingDiff(null);
+  }, [pendingDiff]);
+
+  // Listen for AGENT_PROPOSE_DIFF event
+  useEffect(() => {
+    const handleProposeDiffEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<Omit<ProposedFileDiff, 'diffStats'>>;
+      if (customEvent.detail) {
+        void proposeDiff(customEvent.detail);
+      }
+    };
+
+    window.addEventListener(AppEvents.AGENT_PROPOSE_DIFF, handleProposeDiffEvent);
+    return () => {
+      window.removeEventListener(AppEvents.AGENT_PROPOSE_DIFF, handleProposeDiffEvent);
+    };
+  }, [proposeDiff]);
+
   const activeFile = useMemo(
     () => openFiles.find((f) => f.path === activeFilePath) || null,
     [openFiles, activeFilePath]
@@ -260,6 +378,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsEditorVisible,
         chatWidth,
         setChatWidth,
+        pendingDiff,
+        setPendingDiff,
+        proposeDiff,
+        acceptPendingDiff,
+        rejectPendingDiff,
       }}
     >
       {children}

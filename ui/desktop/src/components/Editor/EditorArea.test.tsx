@@ -38,13 +38,53 @@ vi.mock('@monaco-editor/react', () => ({
       </div>
     );
   },
+  DiffEditor: ({ original, modified, language, onMount }: any) => {
+    React.useEffect(() => {
+      if (onMount) {
+        onMount(
+          {
+            getModifiedEditor: () => ({
+              addCommand: vi.fn(),
+            }),
+          },
+          {
+            editor: {
+              setTheme: vi.fn(),
+            },
+            KeyMod: { CtrlCmd: 2048 },
+            KeyCode: { Enter: 3, Backspace: 1 },
+          }
+        );
+      }
+    }, [onMount]);
+
+    return (
+      <div data-testid="monaco-diff-editor" data-language={language}>
+        <div data-testid="diff-original">{original}</div>
+        <div data-testid="diff-modified">{modified}</div>
+      </div>
+    );
+  },
 }));
 
-// Helper component to trigger openFile and simulate user actions
+// Helper component to trigger openFile and proposeDiff
 const TestFileOpener: React.FC<{
-  filesToOpen: Array<{ path: string }>;
-}> = ({ filesToOpen }) => {
-  const { openFile } = useWorkspace();
+  filesToOpen?: Array<{ path: string }>;
+  proposeDiffOnMount?: {
+    id: string;
+    filePath: string;
+    fileName: string;
+    originalContent: string;
+    proposedContent: string;
+  };
+}> = ({ filesToOpen = [], proposeDiffOnMount }) => {
+  const { openFile, proposeDiff } = useWorkspace();
+
+  React.useEffect(() => {
+    if (proposeDiffOnMount) {
+      void proposeDiff(proposeDiffOnMount);
+    }
+  }, [proposeDiff, proposeDiffOnMount]);
 
   return (
     <div>
@@ -57,6 +97,20 @@ const TestFileOpener: React.FC<{
           Open {f.path}
         </button>
       ))}
+      <button
+        data-testid="trigger-diff-btn"
+        onClick={() => {
+          void proposeDiff({
+            id: 'diff-1',
+            filePath: '/mock/workspace/src/main.rs',
+            fileName: 'main.rs',
+            originalContent: 'fn main() {\n    println!("old");\n}\n',
+            proposedContent: 'fn main() {\n    println!("new");\n}\n',
+          });
+        }}
+      >
+        Trigger Diff
+      </button>
     </div>
   );
 };
@@ -225,6 +279,72 @@ describe('EditorArea', () => {
     await waitFor(() => {
       expect(screen.queryByText('main.rs')).toBeNull();
       expect(screen.getByText('Рабочее пространство Goose')).toBeDefined();
+    });
+  });
+
+  it('displays inline diff banner and accepts proposed agent edits', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    // Trigger proposed diff
+    fireEvent.click(screen.getByTestId('trigger-diff-btn'));
+
+    // Check inline diff banner is visible
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-diff-banner')).toBeDefined();
+      expect(screen.getByText('Правки агента Goose:')).toBeDefined();
+    });
+
+    // Diff editor is rendered with proposed contents
+    expect(screen.getByTestId('monaco-diff-editor')).toBeDefined();
+    expect(screen.getByTestId('diff-original').textContent).toContain('println!("old")');
+    expect(screen.getByTestId('diff-modified').textContent).toContain('println!("new")');
+
+    // Click "Принять (⌘↵)"
+    const acceptBtn = screen.getByRole('button', { name: /Принять/ });
+    fireEvent.click(acceptBtn);
+
+    // Should save proposed content to disk and clear diff
+    await waitFor(() => {
+      expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
+        '/mock/workspace/src/main.rs',
+        'fn main() {\n    println!("new");\n}\n'
+      );
+      expect(screen.queryByTestId('inline-diff-banner')).toBeNull();
+    });
+  });
+
+  it('discards proposed agent edits when "Отклонить" is clicked', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    // Trigger proposed diff
+    fireEvent.click(screen.getByTestId('trigger-diff-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-diff-banner')).toBeDefined();
+    });
+
+    // Click "Отклонить (⌘⌫)"
+    const rejectBtn = screen.getByRole('button', { name: /Отклонить/ });
+    fireEvent.click(rejectBtn);
+
+    // Diff banner dismissed, workspaceCreateFile was NOT called
+    await waitFor(() => {
+      expect(screen.queryByTestId('inline-diff-banner')).toBeNull();
+      expect(window.electron.workspaceCreateFile).not.toHaveBeenCalled();
     });
   });
 });

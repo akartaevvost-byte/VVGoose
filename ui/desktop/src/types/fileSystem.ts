@@ -36,3 +36,19 @@ export interface OpenFileTab {
   originalContent: string;
   isDirty: boolean;
 }
+
+export interface ProposedFileDiff {
+  id: string;
+  filePath: string;
+  fileName: string;
+  originalContent: string;
+  proposedContent: string;
+  beforeText?: string;
+  afterText?: string;
+  diffStats?: { added: number; deleted: number };
+  toolApprovalData?: {
+    sessionId: string;
+    id: string;
+    generation?: string;
+  };
+}

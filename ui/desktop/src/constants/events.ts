@@ -14,4 +14,5 @@ export enum AppEvents {
   RESPONSE_STYLE_CHANGED = 'responseStyleChanged',
   SHOW_THINKING_CHANGED = 'showThinkingChanged',
   ATTACH_FILE_TO_CHAT = 'attach-file-to-chat',
+  AGENT_PROPOSE_DIFF = 'agent-propose-diff',
 }

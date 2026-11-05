@@ -58,4 +58,31 @@ describe('ToolCallConfirmation', () => {
     expect(screen.getByText(securityPrompt)).toBeInTheDocument();
     expect(screen.getByTestId('approval-buttons')).toBeInTheDocument();
   });
+
+  it('renders open diff in editor button for file editing tools', () => {
+    const fileActionRequired = {
+      type: 'actionRequired',
+      data: {
+        actionType: 'toolConfirmation',
+        generation: 'permission-generation-2',
+        id: 'request-2',
+        toolName: 'developer__write',
+        arguments: {
+          path: '/mock/workspace/src/app.rs',
+          content: 'fn run() {}',
+        },
+      },
+    } as ActionRequired & { type: 'actionRequired' };
+
+    render(
+      <ToolCallConfirmation
+        sessionId="session-1"
+        isClicked={false}
+        actionRequiredContent={fileActionRequired}
+      />,
+      { wrapper: IntlTestWrapper }
+    );
+
+    expect(screen.getByText('Открыть сравнение в редакторе')).toBeInTheDocument();
+  });
 });

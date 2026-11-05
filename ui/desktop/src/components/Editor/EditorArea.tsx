@@ -1,16 +1,24 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Editor, { OnMount } from '@monaco-editor/react';
+import Editor, { DiffEditor, OnMount, DiffOnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { EditorTabs } from './EditorTabs';
 import { EmptyEditorView } from './EmptyEditorView';
 import { getLanguageFromFilename } from './languageDetector';
-import { Save } from 'lucide-react';
+import { Save, Check, X, GitCompare } from 'lucide-react';
 import { cn } from '../../utils';
 
 export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
-  const { activeFile, saveActiveFile, updateFileContent, openFiles, workspacePath } =
-    useWorkspace();
+  const {
+    activeFile,
+    saveActiveFile,
+    updateFileContent,
+    openFiles,
+    workspacePath,
+    pendingDiff,
+    acceptPendingDiff,
+    rejectPendingDiff,
+  } = useWorkspace();
 
   const [cursorPosition, setCursorPosition] = useState<{ line: number; col: number }>({
     line: 1,
@@ -19,18 +27,29 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
-  // Global keydown handler for Cmd+S / Ctrl+S
+  // Global keydown handler for Cmd+S, Cmd+Enter, and Cmd+Backspace
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         void saveActiveFile();
+      } else if (pendingDiff && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void acceptPendingDiff();
+      } else if (
+        pendingDiff &&
+        (e.metaKey ||
+          (e.ctrlKey && (e.key === 'Backspace' || e.key === 'Delete')) ||
+          e.key === 'Escape')
+      ) {
+        e.preventDefault();
+        rejectPendingDiff();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveActiveFile]);
+  }, [saveActiveFile, pendingDiff, acceptPendingDiff, rejectPendingDiff]);
 
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -49,6 +68,8 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
           'editorCursor.foreground': '#13bbaf',
           'editorLineNumber.foreground': '#5c6370',
           'editorLineNumber.activeForeground': '#a3a8b2',
+          'diffEditor.insertedTextBackground': '#13bbaf25',
+          'diffEditor.removedTextBackground': '#eb575725',
         },
       });
       monaco.editor.setTheme('goose-dark');
@@ -69,6 +90,21 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     [saveActiveFile]
   );
 
+  const handleDiffEditorMount: DiffOnMount = useCallback(
+    (diffEditor, monaco) => {
+      monaco.editor.setTheme('goose-dark');
+
+      const modifiedEditor = diffEditor.getModifiedEditor();
+      modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+        void acceptPendingDiff();
+      });
+      modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, () => {
+        rejectPendingDiff();
+      });
+    },
+    [acceptPendingDiff, rejectPendingDiff]
+  );
+
   const relativePath = activeFile
     ? workspacePath && activeFile.path.startsWith(workspacePath)
       ? activeFile.path.slice(workspacePath.length).replace(/^[/\\]/, '')
@@ -76,6 +112,9 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     : '';
 
   const language = activeFile ? getLanguageFromFilename(activeFile.name) : 'plaintext';
+
+  const isCurrentFileDiff =
+    pendingDiff && (!activeFile || pendingDiff.filePath === activeFile.path);
 
   return (
     <div
@@ -87,9 +126,71 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
       {/* Tab bar */}
       <EditorTabs />
 
-      {/* Editor Content */}
+      {/* Inline Diff Action Bar */}
+      {isCurrentFileDiff && pendingDiff && (
+        <div
+          data-testid="inline-diff-banner"
+          className="flex items-center justify-between px-3 py-1.5 bg-background-tertiary border-b border-border-primary select-none animate-in fade-in duration-150"
+        >
+          <div className="flex items-center gap-2 text-xs">
+            <GitCompare className="w-4 h-4 text-goose-teal flex-shrink-0" />
+            <span className="font-semibold text-text-primary">Правки агента Goose:</span>
+            <span className="font-mono text-emerald-400 font-bold">
+              +{pendingDiff.diffStats?.added ?? 0}
+            </span>
+            <span className="font-mono text-red-400 font-bold">
+              -{pendingDiff.diffStats?.deleted ?? 0} строк
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void acceptPendingDiff()}
+              className="flex items-center gap-1.5 px-3 py-1 bg-goose-teal hover:bg-goose-teal/90 text-white text-xs font-semibold rounded-md shadow-sm transition-all cursor-pointer"
+              title="Принять изменения (Cmd+Enter / Ctrl+Enter)"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Принять (⌘↵)</span>
+            </button>
+            <button
+              type="button"
+              onClick={rejectPendingDiff}
+              className="flex items-center gap-1.5 px-3 py-1 bg-background-secondary hover:bg-red-500/20 text-text-secondary hover:text-red-400 border border-border-primary hover:border-red-500/50 text-xs rounded-md transition-all cursor-pointer"
+              title="Отклонить изменения (Cmd+Backspace / Ctrl+Backspace)"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Отклонить (⌘⌫)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Editor or Diff Content */}
       <div className="flex-1 min-h-0 relative overflow-hidden bg-[#1c1d22]">
-        {activeFile ? (
+        {isCurrentFileDiff && pendingDiff ? (
+          <DiffEditor
+            key={`diff-${pendingDiff.id}`}
+            height="100%"
+            language={getLanguageFromFilename(pendingDiff.fileName)}
+            original={pendingDiff.originalContent}
+            modified={pendingDiff.proposedContent}
+            theme="goose-dark"
+            onMount={handleDiffEditorMount}
+            options={{
+              renderSideBySide: false, // Inline unified diff
+              readOnly: true,
+              fontSize: 13,
+              lineNumbers: 'on',
+              minimap: { enabled: true },
+              automaticLayout: true,
+              scrollBeyondLastLine: false,
+              fontFamily:
+                'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+              smoothScrolling: true,
+              padding: { top: 8, bottom: 8 },
+            }}
+          />
+        ) : activeFile ? (
           <Editor
             key={activeFile.path}
             height="100%"
@@ -128,16 +229,21 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
             <span className="truncate max-w-[300px]" title={activeFile.path}>
               {relativePath}
             </span>
-            {activeFile.isDirty && (
+            {isCurrentFileDiff ? (
+              <span className="flex items-center gap-1 text-goose-teal font-medium">
+                <GitCompare className="w-3 h-3" />
+                <span>Сравнение изменений агента</span>
+              </span>
+            ) : activeFile.isDirty ? (
               <span className="flex items-center gap-1 text-amber-400 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                 <span>Не сохранено</span>
               </span>
-            )}
+            ) : null}
           </div>
 
           <div className="flex items-center gap-3">
-            {activeFile.isDirty && (
+            {!isCurrentFileDiff && activeFile.isDirty && (
               <button
                 type="button"
                 onClick={() => void saveActiveFile()}
@@ -159,4 +265,3 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     </div>
   );
 };
-
