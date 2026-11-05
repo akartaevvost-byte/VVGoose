@@ -88,6 +88,20 @@ describe('WorkspaceContext', () => {
     expect(result.current.chatWidth).toBe(900);
   });
 
+  it('falls back to the default chat width for a non-numeric stored value', () => {
+    localStorage.setItem('goose_chat_width', 'not-a-number');
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    expect(result.current.chatWidth).toBe(420);
+
+    act(() => {
+      result.current.setChatWidth(500);
+    });
+    expect(result.current.chatWidth).toBe(500);
+    expect(localStorage.getItem('goose_chat_width')).toBe('500');
+  });
+
   it('opens files, manages tabs, and switches active file', async () => {
     const { result } = renderHook(() => useWorkspace(), { wrapper });
 
@@ -148,7 +162,8 @@ describe('WorkspaceContext', () => {
     expect(saveSuccess).toBe(true);
     expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
       '/repo/src/main.rs',
-      'New content'
+      'New content',
+      true
     );
     expect(result.current.activeFile?.isDirty).toBe(false);
   });
@@ -210,7 +225,8 @@ describe('WorkspaceContext', () => {
     expect(accepted).toBe(true);
     expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
       '/repo/src/app.ts',
-      'const a = 1;\nconst b = 3;\nconst c = 4;'
+      'const a = 1;\nconst b = 3;\nconst c = 4;',
+      true
     );
     expect(acpModule.resolveAcpPermissionRequest).toHaveBeenCalledWith(
       'session-123',
@@ -218,6 +234,83 @@ describe('WorkspaceContext', () => {
       'gen-1',
       'allow_once'
     );
+    expect(result.current.pendingDiff).toBeNull();
+  });
+
+  it('keeps the pending diff and denies approval when writing to disk fails', async () => {
+    (window.electron.workspaceCreateFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: 'Access denied: path is outside workspace',
+    });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.proposeDiff({
+        id: 'diff-write-fail',
+        filePath: '/repo/src/app.ts',
+        fileName: 'app.ts',
+        originalContent: 'one',
+        proposedContent: 'two',
+        toolApprovalData: {
+          sessionId: 'session-9',
+          id: 'tool-9',
+          generation: 'gen-9',
+        },
+      });
+    });
+
+    let accepted = true;
+    await act(async () => {
+      accepted = await result.current.acceptPendingDiff();
+    });
+
+    expect(accepted).toBe(false);
+    expect(result.current.pendingDiff).not.toBeNull();
+    expect(acpModule.resolveAcpPermissionRequest).not.toHaveBeenCalled();
+    expect(toastsModule.toastError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Не удалось применить изменения',
+        msg: 'Access denied: path is outside workspace',
+      })
+    );
+  });
+
+  it('keeps dollar sequences literal when building proposed content from before/after', async () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.proposeDiff({
+        id: 'diff-dollar',
+        filePath: '/repo/src/price.ts',
+        fileName: 'price.ts',
+        originalContent: 'old',
+        proposedContent: '',
+        beforeText: 'old',
+        afterText: 'price: $& and $1 tax',
+      });
+    });
+
+    expect(result.current.pendingDiff?.proposedContent).toBe('price: $& and $1 tax');
+  });
+
+  it('closes all open tabs when the workspace path changes', async () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.openFile('/repoA/src/main.rs');
+    });
+    act(() => {
+      result.current.updateFileContent('/repoA/src/main.rs', 'unsaved edits');
+    });
+    expect(result.current.openFiles.length).toBe(1);
+
+    act(() => {
+      result.current.setWorkspacePath('/repoB');
+    });
+
+    expect(result.current.openFiles).toEqual([]);
+    expect(result.current.activeFilePath).toBeNull();
     expect(result.current.pendingDiff).toBeNull();
   });
 

@@ -22,7 +22,6 @@ import type { ProjectGroup } from '../../utils/projectSessions';
 import { defineMessages, useIntl } from '../../i18n';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
-import { acpUpdateWorkingDir } from '../../acp/sessions';
 
 type StreamState = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -325,22 +324,22 @@ export const Navigation: React.FC<{
   const [sidebarMode, setSidebarMode] = useState<'explorer' | 'chats'>('explorer');
 
   const { workspacePath, setWorkspacePath } = useWorkspace();
+  const workspacePathRef = useRef(workspacePath);
+  workspacePathRef.current = workspacePath;
   const activeSession = useMemo(
     () => recentSessions.find((s) => s.id === activeSessionId),
     [recentSessions, activeSessionId]
   );
 
+  // Switching the active session adopts that session's own working directory;
+  // the session is never silently moved to whatever the UI is showing. The
+  // explicit working-dir picker in the chat updates the session instead.
   useEffect(() => {
-    if (activeSession?.workingDir && !workspacePath) {
-      setWorkspacePath(activeSession.workingDir);
+    if (!activeSession?.workingDir || activeSession.workingDir === workspacePathRef.current) {
+      return;
     }
-  }, [activeSession?.workingDir, workspacePath, setWorkspacePath]);
-
-  useEffect(() => {
-    if (activeSession && workspacePath && activeSession.workingDir !== workspacePath) {
-      void acpUpdateWorkingDir(activeSession.id, workspacePath);
-    }
-  }, [activeSession, workspacePath]);
+    setWorkspacePath(activeSession.workingDir);
+  }, [activeSession?.id, activeSession?.workingDir, setWorkspacePath]);
 
   const toggleProjectCollapsed = useCallback((path: string) => {
     setCollapsedProjects((prev) => {

@@ -83,6 +83,6 @@ describe('ToolCallConfirmation', () => {
       { wrapper: IntlTestWrapper }
     );
 
-    expect(screen.getByText('Открыть сравнение в редакторе')).toBeInTheDocument();
+    expect(screen.getByText('Open diff in editor')).toBeInTheDocument();
   });
 });

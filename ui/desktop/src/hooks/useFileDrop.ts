@@ -12,6 +12,10 @@ export interface DroppedFile {
   error?: string;
 }
 
+// Unix absolute, Windows drive, UNC, and tilde paths; anything else is
+// selected text being dragged, not a file reference
+const ABSOLUTE_PATH_PATTERN = /^(?:[a-zA-Z]:[\\/]|\\\\|\/|~[\\/])/;
+
 export const useFileDrop = () => {
   const [droppedFiles, setDroppedFiles] = useState<DroppedFile[]>([]);
   const activeReadersRef = useRef<Set<FileReader>>(new Set());
@@ -34,9 +38,9 @@ export const useFileDrop = () => {
   }, []);
 
   const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
     const files = e.dataTransfer.files;
     if (files.length > 0) {
+      e.preventDefault();
       const droppedFileObjects: DroppedFile[] = [];
 
       for (let i = 0; i < files.length; i++) {
@@ -122,27 +126,32 @@ export const useFileDrop = () => {
       }
 
       setDroppedFiles((prev) => [...prev, ...droppedFileObjects]);
-    } else {
-      const filePath =
-        e.dataTransfer.getData('goose/file-path') || e.dataTransfer.getData('text/plain');
-      if (filePath) {
-        const name = filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
-        setDroppedFiles((prev) => {
-          if (prev.some((f) => f.path === filePath)) return prev;
-          return [
-            ...prev,
-            {
-              id: `dropped-${Date.now()}-0`,
-              path: filePath,
-              name,
-              type: 'text/plain',
-              isImage: false,
-              isLoading: false,
-            },
-          ];
-        });
-      }
+      return;
     }
+
+    const draggedPath =
+      e.dataTransfer.getData('goose/file-path') || e.dataTransfer.getData('text/plain');
+    if (!draggedPath || !ABSOLUTE_PATH_PATTERN.test(draggedPath)) {
+      // Not a file path (e.g. selected text): leave the browser's default
+      // drop behaviour intact instead of swallowing it
+      return;
+    }
+    e.preventDefault();
+    const name = draggedPath.split(/[/\\]/).filter(Boolean).pop() || draggedPath;
+    setDroppedFiles((prev) => {
+      if (prev.some((f) => f.path === draggedPath)) return prev;
+      return [
+        ...prev,
+        {
+          id: `dropped-${Date.now()}-0`,
+          path: draggedPath,
+          name,
+          type: 'text/plain',
+          isImage: false,
+          isLoading: false,
+        },
+      ];
+    });
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {

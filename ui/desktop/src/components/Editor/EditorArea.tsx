@@ -37,6 +37,35 @@ const EDITOR_OPTIONS = {
   padding: { top: 8, bottom: 8 },
 };
 
+const GOOSE_DARK_THEME: Monaco.editor.IStandaloneThemeData = {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#1c1d22',
+    'editor.foreground': '#f0f2f5',
+    'editor.lineHighlightBackground': '#24262c55',
+    'editor.selectionBackground': '#383c4488',
+    'editorCursor.foreground': '#13bbaf',
+    'editorLineNumber.foreground': '#5c6370',
+    'editorLineNumber.activeForeground': '#a3a8b2',
+    'diffEditor.insertedTextBackground': '#13bbaf25',
+    'diffEditor.removedTextBackground': '#eb575725',
+  },
+};
+
+function relativeToWorkspacePath(filePath: string, workspacePath: string): string {
+  if (!workspacePath) return filePath;
+  const root = workspacePath.replace(/[/\\]+$/, '');
+  if (filePath === root) return '';
+  const suffix = filePath.slice(root.length);
+  // Require a separator boundary so a sibling like /proj-2 is not cut into /proj
+  if (suffix.startsWith('/') || suffix.startsWith('\\')) {
+    return suffix.replace(/^[/\\]/, '');
+  }
+  return filePath;
+}
+
 export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
   const {
     activeFile,
@@ -55,20 +84,27 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
   });
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const editorRootRef = useRef<HTMLDivElement>(null);
 
-  // Global keydown handler for Cmd+S, Cmd+Enter, and Cmd+Backspace
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         void saveActiveFile();
-      } else if (pendingDiff && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        return;
+      }
+      if (!pendingDiff) return;
+      // Accept/reject shortcuts only apply while focus is inside the editor
+      // area, otherwise Escape in a modal or Cmd+Backspace in a text field
+      // would silently decide the agent's edit
+      const focusInEditor = editorRootRef.current?.contains(document.activeElement) === true;
+      if (!focusInEditor) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
         void acceptPendingDiff();
       } else if (
-        pendingDiff &&
-        (((e.metaKey || e.ctrlKey) && (e.key === 'Backspace' || e.key === 'Delete')) ||
-          e.key === 'Escape')
+        ((e.metaKey || e.ctrlKey) && (e.key === 'Backspace' || e.key === 'Delete')) ||
+        e.key === 'Escape'
       ) {
         e.preventDefault();
         rejectPendingDiff();
@@ -83,31 +119,13 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     (editor, monaco) => {
       editorRef.current = editor;
 
-      // Define custom Goose dark theme
-      monaco.editor.defineTheme('goose-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [],
-        colors: {
-          'editor.background': '#1c1d22',
-          'editor.foreground': '#f0f2f5',
-          'editor.lineHighlightBackground': '#24262c55',
-          'editor.selectionBackground': '#383c4488',
-          'editorCursor.foreground': '#13bbaf',
-          'editorLineNumber.foreground': '#5c6370',
-          'editorLineNumber.activeForeground': '#a3a8b2',
-          'diffEditor.insertedTextBackground': '#13bbaf25',
-          'diffEditor.removedTextBackground': '#eb575725',
-        },
-      });
+      monaco.editor.defineTheme('goose-dark', GOOSE_DARK_THEME);
       monaco.editor.setTheme('goose-dark');
 
-      // Add Monaco Cmd+S / Ctrl+S command
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         void saveActiveFile();
       });
 
-      // Track cursor position
       editor.onDidChangeCursorPosition((e) => {
         setCursorPosition({
           line: e.position.lineNumber,
@@ -120,6 +138,9 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
 
   const handleDiffEditorMount: DiffOnMount = useCallback(
     (diffEditor, monaco) => {
+      // The diff editor can mount before any regular editor, so the theme
+      // must be defined here as well or Monaco falls back to 'vs'
+      monaco.editor.defineTheme('goose-dark', GOOSE_DARK_THEME);
       monaco.editor.setTheme('goose-dark');
 
       const originalEditor = diffEditor.getOriginalEditor?.();
@@ -140,11 +161,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     [acceptPendingDiff, rejectPendingDiff]
   );
 
-  const relativePath = activeFile
-    ? workspacePath && activeFile.path.startsWith(workspacePath)
-      ? activeFile.path.slice(workspacePath.length).replace(/^[/\\]/, '')
-      : activeFile.path
-    : '';
+  const relativePath = activeFile ? relativeToWorkspacePath(activeFile.path, workspacePath) : '';
 
   const language = activeFile ? getLanguageFromFilename(activeFile.name) : 'plaintext';
 
@@ -153,6 +170,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
 
   return (
     <div
+      ref={editorRootRef}
       className={cn(
         'flex flex-col h-full w-full bg-background-secondary border border-border-primary rounded-xl overflow-hidden select-none',
         className

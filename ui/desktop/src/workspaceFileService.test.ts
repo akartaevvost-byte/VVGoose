@@ -83,6 +83,38 @@ describe('workspaceFileService', () => {
       expect(readResult.content).toBe('# Test Header\nSome content');
     });
 
+    it('refuses to overwrite an existing file without the overwrite flag', async () => {
+      const filePath = path.join(tempDir, 'existing.rs');
+      await createWorkspaceFile(filePath, 'five hundred lines of code');
+
+      const result = await createWorkspaceFile(filePath, '');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('already exists');
+      const readResult = await readWorkspaceFile(filePath);
+      expect(readResult.content).toBe('five hundred lines of code');
+    });
+
+    it('overwrites an existing file when overwrite is set', async () => {
+      const filePath = path.join(tempDir, 'existing.rs');
+      await createWorkspaceFile(filePath, 'old content');
+
+      const result = await createWorkspaceFile(filePath, 'new content', undefined, true);
+
+      expect(result.success).toBe(true);
+      const readResult = await readWorkspaceFile(filePath);
+      expect(readResult.content).toBe('new content');
+    });
+
+    it('creates parent directories on demand', async () => {
+      const filePath = path.join(tempDir, 'deeply', 'nested', 'dir', 'file.txt');
+      const createResult = await createWorkspaceFile(filePath, 'nested content');
+      expect(createResult.success).toBe(true);
+
+      const readResult = await readWorkspaceFile(filePath);
+      expect(readResult.content).toBe('nested content');
+    });
+
     it('handles non-existent files gracefully', async () => {
       const missingPath = path.join(tempDir, 'does-not-exist.txt');
       const readResult = await readWorkspaceFile(missingPath);

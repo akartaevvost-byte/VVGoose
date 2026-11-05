@@ -4532,6 +4532,9 @@
   "toolConfirmation.gooseWouldLikeToCallWithName": {
     "defaultMessage": "Goose хочет вызвать {toolName}. Разрешить?"
   },
+  "toolConfirmation.openDiffInEditor": {
+    "defaultMessage": "Открыть сравнение в редакторе"
+  },
   "updateSection.autoDownload": {
     "defaultMessage": "Обновление будет автоматически скачано в фоновом режиме."
   },

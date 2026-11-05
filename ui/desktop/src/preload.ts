@@ -137,7 +137,11 @@ type ElectronAPI = {
     options?: WorkspaceFileTreeOptions
   ) => Promise<WorkspaceFileNode[]>;
   workspaceReadFile: (filePath: string) => Promise<WorkspaceFileContentResult>;
-  workspaceCreateFile: (filePath: string, content?: string) => Promise<WorkspaceOperationResult>;
+  workspaceCreateFile: (
+    filePath: string,
+    content: string,
+    overwrite: boolean
+  ) => Promise<WorkspaceOperationResult>;
   workspaceCreateDirectory: (dirPath: string) => Promise<WorkspaceOperationResult>;
   workspaceRenamePath: (oldPath: string, newPath: string) => Promise<WorkspaceOperationResult>;
   workspaceDeletePath: (targetPath: string) => Promise<WorkspaceOperationResult>;
@@ -250,10 +254,9 @@ const electronAPI: ElectronAPI = {
     relativeDir?: string,
     options?: WorkspaceFileTreeOptions
   ) => ipcRenderer.invoke('workspace-read-directory', workspaceRoot, relativeDir, options),
-  workspaceReadFile: (filePath: string) =>
-    ipcRenderer.invoke('workspace-read-file', filePath),
-  workspaceCreateFile: (filePath: string, content?: string) =>
-    ipcRenderer.invoke('workspace-create-file', filePath, content),
+  workspaceReadFile: (filePath: string) => ipcRenderer.invoke('workspace-read-file', filePath),
+  workspaceCreateFile: (filePath: string, content: string, overwrite: boolean) =>
+    ipcRenderer.invoke('workspace-create-file', filePath, content, overwrite),
   workspaceCreateDirectory: (dirPath: string) =>
     ipcRenderer.invoke('workspace-create-directory', dirPath),
   workspaceRenamePath: (oldPath: string, newPath: string) =>

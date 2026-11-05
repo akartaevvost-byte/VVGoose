@@ -53,6 +53,7 @@ const STORAGE_KEY = 'goose_workspace_path';
 const CHAT_WIDTH_KEY = 'goose_chat_width';
 const EDITOR_VISIBLE_KEY = 'goose_editor_visible';
 const RECENT_WORKSPACES_KEY = 'goose_recent_workspaces';
+const DEFAULT_CHAT_WIDTH = 420;
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [workspacePath, setWorkspacePathState] = useState<string>(() => {
@@ -106,9 +107,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [chatWidth, setChatWidthState] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(CHAT_WIDTH_KEY);
-      return saved ? parseInt(saved, 10) : 420;
+      const parsed = saved ? parseInt(saved, 10) : DEFAULT_CHAT_WIDTH;
+      return Number.isFinite(parsed) ? parsed : DEFAULT_CHAT_WIDTH;
     } catch {
-      return 420;
+      return DEFAULT_CHAT_WIDTH;
     }
   });
 
@@ -117,7 +119,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const next = typeof value === 'function' ? value(prev) : value;
       const maxAllowed =
         typeof window !== 'undefined' ? Math.max(300, window.innerWidth - 450) : 900;
-      const clamped = Math.max(300, Math.min(next, Math.min(900, maxAllowed)));
+      // A NaN width would persist to localStorage and break the panel forever
+      const clamped = Number.isFinite(next)
+        ? Math.max(300, Math.min(next, Math.min(900, maxAllowed)))
+        : DEFAULT_CHAT_WIDTH;
       try {
         localStorage.setItem(CHAT_WIDTH_KEY, clamped.toString());
       } catch {
@@ -162,8 +167,17 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     []
   );
 
+  const closeAllFiles = useCallback(() => {
+    setOpenFiles([]);
+    setActiveFilePath(null);
+    setSelectedFile(null);
+    setPendingDiff(null);
+  }, []);
+
   const setWorkspacePath = useCallback(
     (newPath: string) => {
+      // Tabs from the previous root can no longer be saved under the new one
+      closeAllFiles();
       setWorkspacePathState(newPath);
       try {
         localStorage.setItem(STORAGE_KEY, newPath);
@@ -174,7 +188,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addRecentWorkspace(newPath);
       }
     },
-    [addRecentWorkspace]
+    [addRecentWorkspace, closeAllFiles]
   );
 
   const openCodeWorkspace = useCallback(
@@ -185,6 +199,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (res && res.found && res.content) {
           const parsed = parseCodeWorkspace(res.content, workspaceFilePath);
           if (parsed) {
+            closeAllFiles();
             setWorkspacePathState(parsed.rootPath);
             try {
               localStorage.setItem(STORAGE_KEY, parsed.rootPath);
@@ -192,7 +207,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               // Ignore
             }
             addRecentWorkspace(parsed.rootPath, parsed.name, true, workspaceFilePath);
-            setSelectedFile(null);
             refreshWorkspace();
             return true;
           }
@@ -210,7 +224,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return false;
       }
     },
-    [addRecentWorkspace, refreshWorkspace]
+    [addRecentWorkspace, closeAllFiles, refreshWorkspace]
   );
 
   const openRecentWorkspace = useCallback(
@@ -297,70 +311,72 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [workspacePath, openCodeWorkspace, setWorkspacePath, refreshWorkspace]);
 
-  const openFile = useCallback(async (filePath: string) => {
-    // If already open, just switch active tab
-    const existing = openFilesRef.current.find((f) => f.path === filePath);
-    if (existing) {
-      setActiveFilePath(filePath);
-      setSelectedFile(filePath);
-      setIsEditorVisible(true);
-      return;
-    }
-
-    if (!window.electron?.workspaceReadFile) return;
-
-    try {
-      const result = await window.electron.workspaceReadFile(filePath);
-      if (result?.error) {
-        toastError({
-          title: 'Не удалось открыть файл',
-          msg: result.error,
-        });
-        return;
-      }
-
-      if (result && result.found && result.content !== null && result.content !== undefined) {
-        const name = filePath.split(/[/\\]/).pop() || filePath;
-        const newTab: OpenFileTab = {
-          path: filePath,
-          name,
-          content: result.content,
-          originalContent: result.content,
-          isDirty: false,
-        };
-        setOpenFiles((prev) => {
-          const alreadyHas = prev.some((f) => f.path === filePath);
-          return alreadyHas ? prev : [...prev, newTab];
-        });
+  const openFile = useCallback(
+    async (filePath: string) => {
+      // If already open, just switch active tab
+      const existing = openFilesRef.current.find((f) => f.path === filePath);
+      if (existing) {
         setActiveFilePath(filePath);
         setSelectedFile(filePath);
         setIsEditorVisible(true);
+        return;
       }
-    } catch (err) {
-      toastError({
-        title: 'Ошибка открытия файла',
-        msg: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }, [setIsEditorVisible]);
+
+      if (!window.electron?.workspaceReadFile) return;
+
+      try {
+        const result = await window.electron.workspaceReadFile(filePath);
+        if (result?.error) {
+          toastError({
+            title: 'Не удалось открыть файл',
+            msg: result.error,
+          });
+          return;
+        }
+
+        if (result && result.found && result.content !== null && result.content !== undefined) {
+          const name = filePath.split(/[/\\]/).pop() || filePath;
+          const newTab: OpenFileTab = {
+            path: filePath,
+            name,
+            content: result.content,
+            originalContent: result.content,
+            isDirty: false,
+          };
+          setOpenFiles((prev) => {
+            const alreadyHas = prev.some((f) => f.path === filePath);
+            return alreadyHas ? prev : [...prev, newTab];
+          });
+          setActiveFilePath(filePath);
+          setSelectedFile(filePath);
+          setIsEditorVisible(true);
+        }
+      } catch (err) {
+        toastError({
+          title: 'Ошибка открытия файла',
+          msg: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [setIsEditorVisible]
+  );
 
   const closeFile = useCallback(
     (filePath: string) => {
-      setOpenFiles((prev) => {
-        const next = prev.filter((f) => f.path !== filePath);
-        if (activeFilePath === filePath) {
-          if (next.length > 0) {
-            const closedIdx = prev.findIndex((f) => f.path === filePath);
-            const nextActive = next[Math.min(closedIdx, next.length - 1)];
-            setActiveFilePath(nextActive.path);
-            setSelectedFile(nextActive.path);
-          } else {
-            setActiveFilePath(null);
-            setSelectedFile(null);
-          }
+      const openFilesSnapshot = openFilesRef.current;
+      const remaining = openFilesSnapshot.filter((f) => f.path !== filePath);
+      setOpenFiles(remaining);
+      if (activeFilePath === filePath) {
+        if (remaining.length > 0) {
+          const closedIdx = openFilesSnapshot.findIndex((f) => f.path === filePath);
+          const nextActive = remaining[Math.min(closedIdx, remaining.length - 1)];
+          setActiveFilePath(nextActive.path);
+          setSelectedFile(nextActive.path);
+        } else {
+          setActiveFilePath(null);
+          setSelectedFile(null);
         }
-        return next;
-      });
+      }
       // If closing the file with a pending diff, clear the diff
       if (pendingDiff?.filePath === filePath) {
         setPendingDiff(null);
@@ -368,13 +384,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     },
     [activeFilePath, pendingDiff]
   );
-
-  const closeAllFiles = useCallback(() => {
-    setOpenFiles([]);
-    setActiveFilePath(null);
-    setSelectedFile(null);
-    setPendingDiff(null);
-  }, []);
 
   const updateFileContent = useCallback((filePath: string, content: string) => {
     setOpenFiles((prev) =>
@@ -399,7 +408,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const contentToSave = tab.content;
       try {
-        const res = await window.electron.workspaceCreateFile(filePath, contentToSave);
+        const res = await window.electron.workspaceCreateFile(filePath, contentToSave, true);
         if (res.success) {
           setOpenFiles((prev) =>
             prev.map((t) =>
@@ -450,7 +459,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       let proposed = diffInput.proposedContent;
       if (!proposed && diffInput.beforeText && diffInput.afterText) {
-        proposed = original.replace(diffInput.beforeText, diffInput.afterText);
+        const before = diffInput.beforeText;
+        const after = diffInput.afterText;
+        // Replacer function keeps $&-style sequences in `after` literal instead
+        // of letting String.replace expand them as substitution patterns
+        proposed = original.replace(before, () => after);
       }
 
       const stats = computeDiffStats(original, proposed);
@@ -473,7 +486,19 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const { filePath, proposedContent, toolApprovalData } = pendingDiff;
 
     try {
-      // 1. Update in openFiles
+      // Write first: the tab, the approval and the pending diff must only be
+      // cleared once the edit really is on disk
+      if (window.electron?.workspaceCreateFile) {
+        const res = await window.electron.workspaceCreateFile(filePath, proposedContent, true);
+        if (!res.success) {
+          toastError({
+            title: 'Не удалось применить изменения',
+            msg: res.error || 'Ошибка записи на диск',
+          });
+          return false;
+        }
+      }
+
       setOpenFiles((prev) =>
         prev.map((tab) =>
           tab.path === filePath
@@ -482,12 +507,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         )
       );
 
-      // 2. Save to disk
-      if (window.electron?.workspaceCreateFile) {
-        await window.electron.workspaceCreateFile(filePath, proposedContent);
-      }
-
-      // 3. If there is ACP tool approval data, approve it!
       if (toolApprovalData) {
         resolveAcpPermissionRequest(
           toolApprovalData.sessionId,

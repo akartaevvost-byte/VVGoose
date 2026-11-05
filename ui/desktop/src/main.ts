@@ -2181,9 +2181,9 @@ ipcMain.handle('get-is-fullscreen', (event) => {
 });
 
 // Add file/directory selection handler
-ipcMain.handle('select-file-or-directory', async (event, defaultPath?: string) => {
+ipcMain.handle('select-file-or-directory', async (_event, defaultPath?: string) => {
   const dialogOptions: OpenDialogOptions = {
-    properties: process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'],
+    properties: ['openFile', 'openDirectory'],
   };
 
   // Set default path if provided
@@ -2210,15 +2210,7 @@ ipcMain.handle('select-file-or-directory', async (event, defaultPath?: string) =
   const result = (await dialog.showOpenDialog(dialogOptions)) as unknown as OpenDialogReturnValue;
 
   if (!result.canceled && result.filePaths.length > 0) {
-    const selected = result.filePaths[0];
-    try {
-      const stats = await fs.stat(selected);
-      const rootDir = stats.isDirectory() ? selected : path.dirname(selected);
-      windowWorkspaces.set(event.sender.id, path.resolve(rootDir));
-    } catch {
-      // Ignore stat error
-    }
-    return selected;
+    return result.filePaths[0];
   }
   return null;
 });
@@ -2394,9 +2386,9 @@ ipcMain.handle('workspace-read-file', async (event, filePath) => {
   return readWorkspaceFile(filePath, root);
 });
 
-ipcMain.handle('workspace-create-file', async (event, filePath, content) => {
+ipcMain.handle('workspace-create-file', async (event, filePath, content, overwrite) => {
   const root = getWorkspaceRootForSender(event.sender.id);
-  return createWorkspaceFile(filePath, content, root);
+  return createWorkspaceFile(filePath, content, root, overwrite);
 });
 
 ipcMain.handle('workspace-create-directory', async (event, dirPath) => {

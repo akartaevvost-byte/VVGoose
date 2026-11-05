@@ -4727,6 +4727,9 @@
   "toolConfirmation.gooseWouldLikeToCallWithName": {
     "defaultMessage": "Goose would like to call {toolName}. Allow?"
   },
+  "toolConfirmation.openDiffInEditor": {
+    "defaultMessage": "Open diff in editor"
+  },
   "updateSection.autoDownload": {
     "defaultMessage": "Goose will download the update in the background and install it the next time you quit or restart."
   },

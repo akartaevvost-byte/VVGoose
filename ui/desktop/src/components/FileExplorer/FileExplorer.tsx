@@ -179,6 +179,7 @@ export const FileExplorer: React.FC = () => {
     targetNode?: WorkspaceFileNode;
     title: string;
     inputValue: string;
+    confirmOverwrite?: boolean;
   } | null>(null);
 
   // Load directory contents
@@ -223,16 +224,22 @@ export const FileExplorer: React.FC = () => {
 
   const toggleDir = useCallback(
     (relPath: string) => {
-      setExpandedDirs((prev) => {
-        const next = new Set(prev);
-        if (next.has(relPath)) {
+      // State updaters must stay pure (StrictMode runs them twice), so the
+      // directory is loaded outside the updater
+      if (expandedDirsRef.current.has(relPath)) {
+        setExpandedDirs((prev) => {
+          const next = new Set(prev);
           next.delete(relPath);
-        } else {
+          return next;
+        });
+      } else {
+        setExpandedDirs((prev) => {
+          const next = new Set(prev);
           next.add(relPath);
-          loadDirectory(relPath);
-        }
-        return next;
-      });
+          return next;
+        });
+        loadDirectory(relPath);
+      }
     },
     [loadDirectory]
   );
@@ -293,12 +300,25 @@ export const FileExplorer: React.FC = () => {
 
   const handleConfirmAction = async () => {
     if (!actionModal) return;
-    const { type, targetPath, targetNode, inputValue } = actionModal;
+    const { type, targetPath, targetNode, inputValue, confirmOverwrite } = actionModal;
+    let keepModalOpen = false;
 
     try {
       if (type === 'create-file' && inputValue.trim()) {
         const fullPath = joinPaths(targetPath, inputValue.trim());
-        const res = await window.electron.workspaceCreateFile(fullPath);
+        if (!confirmOverwrite) {
+          const existing = await window.electron.workspaceReadFile(fullPath);
+          if (existing?.found) {
+            setActionModal((prev) => (prev ? { ...prev, confirmOverwrite: true } : null));
+            keepModalOpen = true;
+            return;
+          }
+        }
+        const res = await window.electron.workspaceCreateFile(
+          fullPath,
+          '',
+          Boolean(confirmOverwrite)
+        );
         if (res && !res.success) {
           toastError({
             title: 'Не удалось создать файл',
@@ -347,7 +367,9 @@ export const FileExplorer: React.FC = () => {
         msg: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      setActionModal(null);
+      if (!keepModalOpen) {
+        setActionModal(null);
+      }
     }
   };
 
@@ -494,6 +516,11 @@ export const FileExplorer: React.FC = () => {
               <p className="text-xs text-text-secondary mb-4">
                 Это действие безвозвратно удалит выбранный элемент с диска.
               </p>
+            ) : actionModal.confirmOverwrite ? (
+              <p className="text-xs text-amber-400 mb-4">
+                Файл «{actionModal.inputValue.trim()}» уже существует. Его текущее содержимое будет
+                удалено безвозвратно. Перезаписать?
+              </p>
             ) : (
               <input
                 type="text"
@@ -521,12 +548,16 @@ export const FileExplorer: React.FC = () => {
                 onClick={() => void handleConfirmAction()}
                 className={cn(
                   'px-3 py-1 text-xs rounded-md font-medium text-white transition-opacity',
-                  actionModal.type === 'delete'
+                  actionModal.type === 'delete' || actionModal.confirmOverwrite
                     ? 'bg-red-500 hover:bg-red-600'
                     : 'bg-goose-teal hover:opacity-90'
                 )}
               >
-                {actionModal.type === 'delete' ? 'Удалить' : 'Сохранить'}
+                {actionModal.type === 'delete'
+                  ? 'Удалить'
+                  : actionModal.confirmOverwrite
+                    ? 'Перезаписать'
+                    : 'Сохранить'}
               </button>
             </div>
           </div>

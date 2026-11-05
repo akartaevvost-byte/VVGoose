@@ -7,8 +7,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorArea } from './EditorArea';
 import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
 
-vi.mock('@monaco-editor/react', () => ({
-  default: ({ value, onChange, language, onMount }: any) => {
+vi.mock('@monaco-editor/react', () => {
+  const MockEditor = ({
+    value,
+    onChange,
+    language,
+    onMount,
+  }: {
+    value?: string;
+    onChange?: (value: string) => void;
+    language?: string;
+    onMount?: (editor: unknown, monaco: unknown) => void;
+  }) => {
     React.useEffect(() => {
       if (onMount) {
         onMount(
@@ -37,8 +47,19 @@ vi.mock('@monaco-editor/react', () => ({
         />
       </div>
     );
-  },
-  DiffEditor: ({ original, modified, language, onMount }: any) => {
+  };
+
+  const MockDiffEditor = ({
+    original,
+    modified,
+    language,
+    onMount,
+  }: {
+    original?: string;
+    modified?: string;
+    language?: string;
+    onMount?: (editor: unknown, monaco: unknown) => void;
+  }) => {
     React.useEffect(() => {
       if (onMount) {
         onMount(
@@ -52,6 +73,7 @@ vi.mock('@monaco-editor/react', () => ({
           },
           {
             editor: {
+              defineTheme: vi.fn(),
               setTheme: vi.fn(),
             },
             KeyMod: { CtrlCmd: 2048 },
@@ -67,8 +89,10 @@ vi.mock('@monaco-editor/react', () => ({
         <div data-testid="diff-modified">{modified}</div>
       </div>
     );
-  },
-}));
+  };
+
+  return { default: MockEditor, DiffEditor: MockDiffEditor };
+});
 
 // Helper component to trigger openFile and proposeDiff
 const TestFileOpener: React.FC<{
@@ -249,7 +273,8 @@ describe('EditorArea', () => {
     await waitFor(() => {
       expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
         '/mock/workspace/src/main.rs',
-        'fn main() { /* edited */ }'
+        'fn main() { /* edited */ }',
+        true
       );
     });
 
@@ -317,7 +342,8 @@ describe('EditorArea', () => {
     await waitFor(() => {
       expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
         '/mock/workspace/src/main.rs',
-        'fn main() {\n    println!("new");\n}\n'
+        'fn main() {\n    println!("new");\n}\n',
+        true
       );
       expect(screen.queryByTestId('inline-diff-banner')).toBeNull();
     });
@@ -349,5 +375,36 @@ describe('EditorArea', () => {
       expect(screen.queryByTestId('inline-diff-banner')).toBeNull();
       expect(window.electron.workspaceCreateFile).not.toHaveBeenCalled();
     });
+  });
+
+  it('rejects on Escape only while focus is inside the editor area', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('trigger-diff-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-diff-banner')).toBeDefined();
+    });
+
+    // Focus is on <body> (e.g. a modal or chat input owns it): Escape must
+    // not decide the agent's edit
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByTestId('inline-diff-banner')).toBeDefined();
+
+    // Focus moves into the editor area: Escape now rejects
+    screen.getByRole('button', { name: /Принять/ }).focus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('inline-diff-banner')).toBeNull();
+    });
+    expect(window.electron.workspaceCreateFile).not.toHaveBeenCalled();
   });
 });

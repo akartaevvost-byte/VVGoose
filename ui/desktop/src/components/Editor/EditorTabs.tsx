@@ -20,7 +20,6 @@ export const EditorTabs: React.FC = () => {
 
   const handleTabAuxClick = (e: React.MouseEvent, filePath: string) => {
     if (e.button === 1) {
-      // Middle click closes tab
       e.preventDefault();
       closeFile(filePath);
     }
@@ -81,4 +80,3 @@ export const EditorTabs: React.FC = () => {
     </div>
   );
 };
-

@@ -263,12 +263,14 @@ export async function readWorkspaceFile(
 }
 
 /**
- * Creates a new file at the specified path
+ * Creates a new file at the specified path. Refuses to touch an existing file
+ * unless `overwrite` is set, so "create" can never silently truncate content.
  */
 export async function createWorkspaceFile(
   filePath: string,
   content = '',
-  workspaceRoot?: string
+  workspaceRoot?: string,
+  overwrite = false
 ): Promise<WorkspaceOperationResult> {
   try {
     let expandedPath = expandTilde(filePath);
@@ -276,6 +278,18 @@ export async function createWorkspaceFile(
       expandedPath = assertWithinWorkspace(expandedPath, workspaceRoot);
     } else {
       expandedPath = path.resolve(expandedPath);
+    }
+
+    if (!overwrite) {
+      try {
+        await fs.access(expandedPath);
+        return {
+          success: false,
+          error: `File already exists: ${expandedPath}`,
+        };
+      } catch {
+        // Nothing exists at the path yet
+      }
     }
 
     const parentDir = path.dirname(expandedPath);

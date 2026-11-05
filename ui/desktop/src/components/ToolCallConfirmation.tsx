@@ -1,5 +1,6 @@
 import { useContext, useEffect } from 'react';
 import type { ActionRequired } from '../types/message';
+import type { ProposedFileDiff } from '../types/fileSystem';
 import { defineMessages, useIntl } from '../i18n';
 import { snakeToTitleCase } from '../utils';
 import ToolApprovalButtons from './ToolApprovalButtons';
@@ -30,6 +31,30 @@ function formatToolName(fullName: string): string {
 
 type ToolConfirmationData = Extract<ActionRequired['data'], { actionType: 'toolConfirmation' }>;
 
+function buildFileDiffProposal(params: {
+  sessionId: string;
+  id: string;
+  generation?: string;
+  filePath: string;
+  toolArguments: Record<string, unknown> | undefined;
+}): Omit<ProposedFileDiff, 'diffStats'> {
+  const fileName = params.filePath.split(/[/\\]/).pop() || params.filePath;
+  return {
+    id: params.id,
+    filePath: params.filePath,
+    fileName,
+    originalContent: '',
+    proposedContent: (params.toolArguments?.content as string) || '',
+    beforeText: (params.toolArguments?.before as string) || undefined,
+    afterText: (params.toolArguments?.after as string) || undefined,
+    toolApprovalData: {
+      sessionId: params.sessionId,
+      id: params.id,
+      generation: params.generation,
+    },
+  };
+}
+
 interface ToolConfirmationProps {
   sessionId: string;
   isClicked: boolean;
@@ -56,49 +81,17 @@ export default function ToolConfirmation({
 
   useEffect(() => {
     if (isFileTool && filePath && workspace?.proposeDiff && !isClicked) {
-      const fileName = filePath.split(/[/\\]/).pop() || filePath;
-      const proposedContent = (toolArguments?.content as string) || '';
-      const beforeText = (toolArguments?.before as string) || undefined;
-      const afterText = (toolArguments?.after as string) || undefined;
-
-      void workspace.proposeDiff({
-        id,
-        filePath,
-        fileName,
-        originalContent: '',
-        proposedContent,
-        beforeText,
-        afterText,
-        toolApprovalData: {
-          sessionId,
-          id,
-          generation: generation ?? undefined,
-        },
-      });
+      void workspace.proposeDiff(
+        buildFileDiffProposal({ sessionId, id, generation, filePath, toolArguments })
+      );
     }
   }, [isFileTool, filePath, id, generation, sessionId, isClicked, toolArguments, workspace]);
 
   const handleOpenDiffInEditor = () => {
     if (!workspace?.proposeDiff || !filePath) return;
-    const fileName = filePath.split(/[/\\]/).pop() || filePath;
-    const proposedContent = (toolArguments?.content as string) || '';
-    const beforeText = (toolArguments?.before as string) || undefined;
-    const afterText = (toolArguments?.after as string) || undefined;
-
-    void workspace.proposeDiff({
-      id,
-      filePath,
-      fileName,
-      originalContent: '',
-      proposedContent,
-      beforeText,
-      afterText,
-      toolApprovalData: {
-        sessionId,
-        id,
-        generation: generation ?? undefined,
-      },
-    });
+    void workspace.proposeDiff(
+      buildFileDiffProposal({ sessionId, id, generation, filePath, toolArguments })
+    );
   };
 
   return (
@@ -119,7 +112,7 @@ export default function ToolConfirmation({
             className="flex items-center gap-1.5 px-3 py-1 text-xs text-goose-teal hover:bg-goose-teal/10 rounded-md border border-goose-teal/40 transition-colors my-2 cursor-pointer"
           >
             <GitCompare className="w-3.5 h-3.5" />
-            <span>Открыть сравнение в редакторе</span>
+            <span>{intl.formatMessage(i18n.openDiffInEditor)}</span>
           </button>
         )}
 

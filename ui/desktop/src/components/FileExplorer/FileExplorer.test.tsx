@@ -103,6 +103,9 @@ describe('FileExplorer', () => {
 
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       workspaceReadDirectory: vi.fn().mockResolvedValue([]),
+      workspaceReadFile: vi
+        .fn()
+        .mockResolvedValue({ found: false, content: '', filePath: '', error: null }),
       workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
       workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
       workspaceCreateFile: vi.fn().mockResolvedValue({ success: true }),
@@ -126,7 +129,55 @@ describe('FileExplorer', () => {
 
     await waitFor(() => {
       expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
-        '/mock/workspace/newfile.rs'
+        '/mock/workspace/newfile.rs',
+        '',
+        false
+      );
+    });
+  });
+
+  it('asks for confirmation before overwriting an existing file', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockResolvedValue([]),
+      workspaceReadFile: vi.fn().mockResolvedValue({
+        found: true,
+        content: 'existing content',
+        filePath: '/mock/workspace/main.rs',
+        error: null,
+      }),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceCreateFile: vi.fn().mockResolvedValue({ success: true }),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    fireEvent.click(screen.getByTitle('Создать файл в корне проекта'));
+    const input = screen.getByPlaceholderText('Введите имя...');
+    fireEvent.change(input, { target: { value: 'main.rs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    // The first confirm only reveals the overwrite warning; nothing is written yet
+    await waitFor(() => {
+      expect(screen.getByText(/уже существует/)).toBeDefined();
+    });
+    expect(window.electron.workspaceCreateFile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Перезаписать' }));
+
+    await waitFor(() => {
+      expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
+        '/mock/workspace/main.rs',
+        '',
+        true
       );
     });
   });
