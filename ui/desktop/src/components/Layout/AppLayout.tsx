@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import ChatSessionsContainer from '../ChatSessionsContainer';
 import { useChatContext } from '../../contexts/ChatContext';
 import { NavigationProvider, useNavigationContext } from './NavigationContext';
+import { WorkspaceProvider } from '../../contexts/WorkspaceContext';
 import { Navigation } from './NavigationPanel';
 import { Z_INDEX } from './constants';
 import { cn } from '../../utils';
@@ -193,7 +194,9 @@ interface AppLayoutProps {
 export const AppLayout: React.FC<AppLayoutProps> = ({ activeSessions, liveVoice }) => {
   return (
     <NavigationProvider>
-      <AppLayoutContent activeSessions={activeSessions} liveVoice={liveVoice} />
+      <WorkspaceProvider>
+        <AppLayoutContent activeSessions={activeSessions} liveVoice={liveVoice} />
+      </WorkspaceProvider>
     </NavigationProvider>
   );
 };

@@ -65,6 +65,16 @@ import {
   isAuthorizedFileAccessRequest,
   readSelectedRecipe,
 } from './desktopFileAccess';
+import {
+  readWorkspaceDirectory,
+  readWorkspaceFile,
+  createWorkspaceFile,
+  createWorkspaceDirectory,
+  renameWorkspacePath,
+  deleteWorkspacePath,
+  getWorkspaceGitStatuses,
+  workspaceWatcherManager,
+} from './workspaceFileService';
 import { getWindowIconFilename } from './utils/windowIcon';
 
 const windowIconPath = path.join(__dirname, '../images', getWindowIconFilename(process.platform));
@@ -1447,6 +1457,7 @@ const createChat = async (
   mainWindow.on('closed', () => {
     windowMap.delete(windowId);
     desktopFileAccess.unbindWindow(windowId);
+    workspaceWatcherManager.stopWatching(windowId);
 
     pendingInitialMessages.delete(windowId);
     pendingDeepLinks.delete(windowId);
@@ -2356,6 +2367,51 @@ ipcMain.handle('list-files', async (_event, dirPath, extension) => {
     console.error('Error listing files:', error);
     return [];
   }
+});
+
+ipcMain.handle(
+  'workspace-read-directory',
+  async (_event, workspaceRoot, relativeDir, options) => {
+    return readWorkspaceDirectory(workspaceRoot, relativeDir, options);
+  }
+);
+
+ipcMain.handle('workspace-read-file', async (_event, filePath) => {
+  return readWorkspaceFile(filePath);
+});
+
+ipcMain.handle('workspace-create-file', async (_event, filePath, content) => {
+  return createWorkspaceFile(filePath, content);
+});
+
+ipcMain.handle('workspace-create-directory', async (_event, dirPath) => {
+  return createWorkspaceDirectory(dirPath);
+});
+
+ipcMain.handle('workspace-rename-path', async (_event, oldPath, newPath) => {
+  return renameWorkspacePath(oldPath, newPath);
+});
+
+ipcMain.handle('workspace-delete-path', async (_event, targetPath) => {
+  return deleteWorkspacePath(targetPath);
+});
+
+ipcMain.handle('workspace-get-git-statuses', async (_event, workspacePath) => {
+  return getWorkspaceGitStatuses(workspacePath);
+});
+
+ipcMain.handle('workspace-start-watching', async (event, workspacePath) => {
+  workspaceWatcherManager.startWatching(event.sender.id, workspacePath, (changedRoot) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('workspace-files-changed', { rootPath: changedRoot });
+    }
+  });
+  return true;
+});
+
+ipcMain.handle('workspace-stop-watching', async (event) => {
+  workspaceWatcherManager.stopWatching(event.sender.id);
+  return true;
 });
 
 ipcMain.handle('show-message-box', async (_event, options) => {

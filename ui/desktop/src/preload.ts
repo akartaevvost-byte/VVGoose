@@ -4,6 +4,13 @@ import type { GooseApp } from './types/apps';
 import type { Settings, SettingKey } from './utils/settings';
 import { defaultSettings } from './utils/settings';
 import type { OpenExternalUrlResult } from './utils/urlSecurity';
+import type {
+  GitFileStatus,
+  WorkspaceFileContentResult,
+  WorkspaceFileNode,
+  WorkspaceFileTreeOptions,
+  WorkspaceOperationResult,
+} from './types/fileSystem';
 
 // Mapping from settings keys to their old localStorage keys for lazy migration
 const localStorageKeyMap: Partial<Record<SettingKey, string>> = {
@@ -124,6 +131,19 @@ type ElectronAPI = {
   writeFile: (directory: string, content: string) => Promise<boolean>;
   ensureDirectory: (dirPath: string) => Promise<boolean>;
   listFiles: (dirPath: string, extension?: string) => Promise<string[]>;
+  workspaceReadDirectory: (
+    workspaceRoot: string,
+    relativeDir?: string,
+    options?: WorkspaceFileTreeOptions
+  ) => Promise<WorkspaceFileNode[]>;
+  workspaceReadFile: (filePath: string) => Promise<WorkspaceFileContentResult>;
+  workspaceCreateFile: (filePath: string, content?: string) => Promise<WorkspaceOperationResult>;
+  workspaceCreateDirectory: (dirPath: string) => Promise<WorkspaceOperationResult>;
+  workspaceRenamePath: (oldPath: string, newPath: string) => Promise<WorkspaceOperationResult>;
+  workspaceDeletePath: (targetPath: string) => Promise<WorkspaceOperationResult>;
+  workspaceGetGitStatuses: (workspacePath: string) => Promise<Record<string, GitFileStatus>>;
+  workspaceStartWatching: (workspacePath: string) => Promise<void>;
+  workspaceStopWatching: () => Promise<void>;
   getAllowedExtensions: () => Promise<string[] | null>;
   getPathForFile: (file: File) => string;
   setMenuBarIcon: (show: boolean) => Promise<boolean>;
@@ -225,6 +245,26 @@ const electronAPI: ElectronAPI = {
   ensureDirectory: (dirPath: string) => ipcRenderer.invoke('ensure-directory', dirPath),
   listFiles: (dirPath: string, extension?: string) =>
     ipcRenderer.invoke('list-files', dirPath, extension),
+  workspaceReadDirectory: (
+    workspaceRoot: string,
+    relativeDir?: string,
+    options?: WorkspaceFileTreeOptions
+  ) => ipcRenderer.invoke('workspace-read-directory', workspaceRoot, relativeDir, options),
+  workspaceReadFile: (filePath: string) =>
+    ipcRenderer.invoke('workspace-read-file', filePath),
+  workspaceCreateFile: (filePath: string, content?: string) =>
+    ipcRenderer.invoke('workspace-create-file', filePath, content),
+  workspaceCreateDirectory: (dirPath: string) =>
+    ipcRenderer.invoke('workspace-create-directory', dirPath),
+  workspaceRenamePath: (oldPath: string, newPath: string) =>
+    ipcRenderer.invoke('workspace-rename-path', oldPath, newPath),
+  workspaceDeletePath: (targetPath: string) =>
+    ipcRenderer.invoke('workspace-delete-path', targetPath),
+  workspaceGetGitStatuses: (workspacePath: string) =>
+    ipcRenderer.invoke('workspace-get-git-statuses', workspacePath),
+  workspaceStartWatching: (workspacePath: string) =>
+    ipcRenderer.invoke('workspace-start-watching', workspacePath),
+  workspaceStopWatching: () => ipcRenderer.invoke('workspace-stop-watching'),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getAllowedExtensions: () => ipcRenderer.invoke('get-allowed-extensions'),
   setMenuBarIcon: (show: boolean) => ipcRenderer.invoke('set-menu-bar-icon', show),

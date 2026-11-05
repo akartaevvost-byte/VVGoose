@@ -13,4 +13,5 @@ export enum AppEvents {
   SCROLL_CHAT_TO_BOTTOM = 'scroll-chat-to-bottom',
   RESPONSE_STYLE_CHANGED = 'responseStyleChanged',
   SHOW_THINKING_CHANGED = 'showThinkingChanged',
+  ATTACH_FILE_TO_CHAT = 'attach-file-to-chat',
 }

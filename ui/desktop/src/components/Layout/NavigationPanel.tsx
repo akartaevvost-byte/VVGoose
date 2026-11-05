@@ -20,6 +20,8 @@ import { formatMessageTimestamp } from '../../utils/timeUtils';
 import { cn } from '../../utils';
 import type { ProjectGroup } from '../../utils/projectSessions';
 import { defineMessages, useIntl } from '../../i18n';
+import { FileExplorer } from '../FileExplorer/FileExplorer';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 
 type StreamState = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -84,6 +86,14 @@ const i18n = defineMessages({
   returnToActiveLiveVoice: {
     id: 'liveVoice.returnToActive',
     defaultMessage: 'Return to active Live voice',
+  },
+  filesTab: {
+    id: 'navigationPanel.filesTab',
+    defaultMessage: 'Files',
+  },
+  chatsTab: {
+    id: 'navigationPanel.chatsTab',
+    defaultMessage: 'Chats',
   },
 });
 
@@ -311,6 +321,19 @@ export const Navigation: React.FC<{
 
   const [isChatsExpanded, setIsChatsExpanded] = useState(true);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+  const [sidebarMode, setSidebarMode] = useState<'explorer' | 'chats'>('explorer');
+
+  const { workspacePath, setWorkspacePath } = useWorkspace();
+  const activeSession = useMemo(
+    () => recentSessions.find((s) => s.id === activeSessionId),
+    [recentSessions, activeSessionId]
+  );
+
+  useEffect(() => {
+    if (activeSession?.workingDir && !workspacePath) {
+      setWorkspacePath(activeSession.workingDir);
+    }
+  }, [activeSession?.workingDir, workspacePath, setWorkspacePath]);
 
   const toggleProjectCollapsed = useCallback((path: string) => {
     setCollapsedProjects((prev) => {
@@ -349,79 +372,111 @@ export const Navigation: React.FC<{
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col mt-3">
+      {/* Switcher between File Explorer and Chats */}
+      <div className="flex border-b border-border-primary/60 px-2 mt-2">
         <button
-          onClick={() => setIsChatsExpanded((v) => !v)}
-          className="flex items-center gap-1 px-4 py-1 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors self-start"
-        >
-          {isChatsExpanded ? (
-            <ChevronDown className="w-3 h-3" />
-          ) : (
-            <ChevronRight className="w-3 h-3" />
+          onClick={() => setSidebarMode('explorer')}
+          className={cn(
+            'flex-1 py-1.5 text-xs font-medium text-center transition-colors border-b-2 outline-none',
+            sidebarMode === 'explorer'
+              ? 'border-goose-teal text-text-primary font-semibold'
+              : 'border-transparent text-text-secondary hover:text-text-primary'
           )}
-          <span>{intl.formatMessage(i18n.chats)}</span>
+        >
+          {intl.formatMessage(i18n.filesTab)}
         </button>
-        {isChatsExpanded && (
-          <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 mt-1">
-            {recentSessions.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-text-secondary">
-                {intl.formatMessage(isLoadingSessions ? i18n.loadingChats : i18n.noChats)}
-              </div>
-            ) : recentSessionsByProject.length > 1 ? (
-              recentSessionsByProject.map((group: ProjectGroup) => {
-                const isCollapsed = collapsedProjects.has(group.path);
-                return (
-                  <React.Fragment key={group.path}>
-                    <button
-                      onClick={() => toggleProjectCollapsed(group.path)}
-                      aria-expanded={!isCollapsed}
-                      className="flex items-center gap-1 w-full px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-text-tertiary hover:text-text-secondary transition-colors"
-                      title={group.path}
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight className="w-3 h-3 flex-shrink-0" />
-                      ) : (
-                        <ChevronDown className="w-3 h-3 flex-shrink-0" />
-                      )}
-                      <span className="truncate">{group.label}</span>
-                    </button>
-                    {!isCollapsed &&
-                      group.sessions.map((session) => (
-                        <SessionRow
-                          key={session.id}
-                          session={session}
-                          active={session.id === activeSessionId}
-                          isLiveVoiceActive={session.id === activeLiveVoiceSessionId}
-                          status={sessionStatuses.get(session.id)}
-                          onClick={() => {
-                            clearUnread(session.id);
-                            handleSessionClick(session.id);
-                          }}
-                          onRenamed={fetchSessions}
-                        />
-                      ))}
-                  </React.Fragment>
-                );
-              })
-            ) : (
-              recentSessions.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  active={session.id === activeSessionId}
-                  isLiveVoiceActive={session.id === activeLiveVoiceSessionId}
-                  status={sessionStatuses.get(session.id)}
-                  onClick={() => {
-                    clearUnread(session.id);
-                    handleSessionClick(session.id);
-                  }}
-                  onRenamed={fetchSessions}
-                />
-              ))
-            )}
-          </div>
-        )}
+        <button
+          onClick={() => setSidebarMode('chats')}
+          className={cn(
+            'flex-1 py-1.5 text-xs font-medium text-center transition-colors border-b-2 outline-none',
+            sidebarMode === 'chats'
+              ? 'border-goose-teal text-text-primary font-semibold'
+              : 'border-transparent text-text-secondary hover:text-text-primary'
+          )}
+        >
+          {intl.formatMessage(i18n.chatsTab)}
+        </button>
       </div>
+
+      {sidebarMode === 'explorer' ? (
+        <div className="flex-1 min-h-0 flex flex-col mt-1">
+          <FileExplorer />
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col mt-3">
+          <button
+            onClick={() => setIsChatsExpanded((v) => !v)}
+            className="flex items-center gap-1 px-4 py-1 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors self-start"
+          >
+            {isChatsExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            <span>{intl.formatMessage(i18n.chats)}</span>
+          </button>
+          {isChatsExpanded && (
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 mt-1">
+              {recentSessions.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-text-secondary">
+                  {intl.formatMessage(isLoadingSessions ? i18n.loadingChats : i18n.noChats)}
+                </div>
+              ) : recentSessionsByProject.length > 1 ? (
+                recentSessionsByProject.map((group: ProjectGroup) => {
+                  const isCollapsed = collapsedProjects.has(group.path);
+                  return (
+                    <React.Fragment key={group.path}>
+                      <button
+                        onClick={() => toggleProjectCollapsed(group.path)}
+                        aria-expanded={!isCollapsed}
+                        className="flex items-center gap-1 w-full px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-text-tertiary hover:text-text-secondary transition-colors"
+                        title={group.path}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="w-3 h-3 flex-shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                        )}
+                        <span className="truncate">{group.label}</span>
+                      </button>
+                      {!isCollapsed &&
+                        group.sessions.map((session) => (
+                          <SessionRow
+                            key={session.id}
+                            session={session}
+                            active={session.id === activeSessionId}
+                            isLiveVoiceActive={session.id === activeLiveVoiceSessionId}
+                            status={sessionStatuses.get(session.id)}
+                            onClick={() => {
+                              clearUnread(session.id);
+                              handleSessionClick(session.id);
+                            }}
+                            onRenamed={fetchSessions}
+                          />
+                        ))}
+                    </React.Fragment>
+                  );
+                })
+              ) : (
+                recentSessions.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    active={session.id === activeSessionId}
+                    isLiveVoiceActive={session.id === activeLiveVoiceSessionId}
+                    status={sessionStatuses.get(session.id)}
+                    onClick={() => {
+                      clearUnread(session.id);
+                      handleSessionClick(session.id);
+                    }}
+                    onRenamed={fetchSessions}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="px-2 pt-2 pb-2 border-t border-border-secondary">
         <NavRow

@@ -38,6 +38,7 @@ import { compressImageDataUrl } from '../utils/conversionUtils';
 import { fetchCanonicalModelInfo } from '../utils/canonical';
 import { getTextDirection } from '../utils/textDirection';
 import { defineMessages, useIntl } from '../i18n';
+import { AppEvents } from '../constants/events';
 import TurndownService from 'turndown';
 import type { NextChatExtensionDraft } from '../utils/nextChatExtensions';
 import { LiveVoiceButton } from './LiveVoiceButton';
@@ -618,6 +619,30 @@ export default function ChatInput({
       textAreaRef.current.focus();
     }
   }, [textAreaRef]);
+
+  useEffect(() => {
+    const handleAttach = (event: Event) => {
+      const customEvent = event as CustomEvent<{ path: string; name: string }>;
+      if (customEvent.detail?.path) {
+        const { path: filePath, name } = customEvent.detail;
+        const newDroppedFile: DroppedFile = {
+          id: `dropped-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          path: filePath,
+          name: name || filePath.split(/[/\\]/).filter(Boolean).pop() || filePath,
+          type: 'text/plain',
+          isImage: false,
+          isLoading: false,
+        };
+        setLocalDroppedFiles((prev) => {
+          if (prev.some((f) => f.path === filePath)) return prev;
+          return [...prev, newDroppedFile];
+        });
+      }
+    };
+
+    window.addEventListener(AppEvents.ATTACH_FILE_TO_CHAT, handleAttach);
+    return () => window.removeEventListener(AppEvents.ATTACH_FILE_TO_CHAT, handleAttach);
+  }, [setLocalDroppedFiles]);
 
   useFocusOnTyping(textAreaRef, !isRecording);
 

@@ -122,6 +122,26 @@ export const useFileDrop = () => {
       }
 
       setDroppedFiles((prev) => [...prev, ...droppedFileObjects]);
+    } else {
+      const filePath =
+        e.dataTransfer.getData('goose/file-path') || e.dataTransfer.getData('text/plain');
+      if (filePath) {
+        const name = filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
+        setDroppedFiles((prev) => {
+          if (prev.some((f) => f.path === filePath)) return prev;
+          return [
+            ...prev,
+            {
+              id: `dropped-${Date.now()}-0`,
+              path: filePath,
+              name,
+              type: 'text/plain',
+              isImage: false,
+              isLoading: false,
+            },
+          ];
+        });
+      }
     }
   }, []);
 
