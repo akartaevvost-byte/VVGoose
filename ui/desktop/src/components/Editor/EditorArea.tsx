@@ -94,13 +94,20 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     (diffEditor, monaco) => {
       monaco.editor.setTheme('goose-dark');
 
-      const modifiedEditor = diffEditor.getModifiedEditor();
-      modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      const originalEditor = diffEditor.getOriginalEditor?.();
+      const modifiedEditor = diffEditor.getModifiedEditor?.();
+
+      const acceptCmd = () => {
         void acceptPendingDiff();
-      });
-      modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, () => {
+      };
+      const rejectCmd = () => {
         rejectPendingDiff();
-      });
+      };
+
+      modifiedEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, acceptCmd);
+      modifiedEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, rejectCmd);
+      originalEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, acceptCmd);
+      originalEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, rejectCmd);
     },
     [acceptPendingDiff, rejectPendingDiff]
   );
@@ -207,6 +214,9 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
               automaticLayout: true,
               tabSize: 2,
               wordWrap: 'off',
+              folding: true,
+              foldingHighlight: true,
+              showFoldingControls: 'always',
               fontFamily:
                 'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
               smoothScrolling: true,

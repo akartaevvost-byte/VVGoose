@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Folder, ChevronRight, ChevronDown, RotateCw } from 'lucide-react';
+import {
+  Folder,
+  ChevronRight,
+  ChevronDown,
+  RotateCw,
+  FilePlus,
+  FolderPlus,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import type { WorkspaceFileNode } from '../../types/fileSystem';
 import { FileContextMenu } from './FileContextMenu';
@@ -15,6 +24,7 @@ interface FileTreeNodeProps {
   selectedFile: string | null;
   onSelectFile: (filePath: string) => void;
   onContextMenu: (e: React.MouseEvent, node: WorkspaceFileNode) => void;
+  hideIgnored?: boolean;
 }
 
 const FileTreeNode: React.FC<FileTreeNodeProps> = ({
@@ -26,7 +36,12 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
   selectedFile,
   onSelectFile,
   onContextMenu,
+  hideIgnored = false,
 }) => {
+  if (hideIgnored && node.isIgnored) {
+    return null;
+  }
+
   const isExpanded = expandedDirs.has(node.relativePath);
   const children = dirChildren.get(node.relativePath) || [];
   const isSelected = selectedFile === node.path;
@@ -121,6 +136,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
                 selectedFile={selectedFile}
                 onSelectFile={onSelectFile}
                 onContextMenu={onContextMenu}
+                hideIgnored={hideIgnored}
               />
             ))
           )}
@@ -146,6 +162,7 @@ export const FileExplorer: React.FC = () => {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [dirChildren, setDirChildren] = useState<Map<string, WorkspaceFileNode[]>>(new Map());
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hideIgnored, setHideIgnored] = useState<boolean>(false);
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
@@ -318,6 +335,38 @@ export const FileExplorer: React.FC = () => {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {workspacePath && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleCreateFile(workspacePath)}
+                className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                title="Создать файл в корне проекта"
+              >
+                <FilePlus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCreateFolder(workspacePath)}
+                className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                title="Создать папку в корне проекта"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setHideIgnored((v) => !v)}
+                className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                title={hideIgnored ? 'Показать файлы из .gitignore' : 'Скрыть файлы из .gitignore'}
+              >
+                {hideIgnored ? (
+                  <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <Eye className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </>
+          )}
           <button
             onClick={() => refreshWorkspace()}
             className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary transition-colors"
@@ -362,6 +411,7 @@ export const FileExplorer: React.FC = () => {
               selectedFile={selectedFile}
               onSelectFile={handleSelectFile}
               onContextMenu={handleContextMenu}
+              hideIgnored={hideIgnored}
             />
           ))
         )}

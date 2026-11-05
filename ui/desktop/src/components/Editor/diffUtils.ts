@@ -39,3 +39,4 @@ export function computeDiffStats(original: string, modified: string): DiffStats 
 
   return { added, deleted };
 }
+

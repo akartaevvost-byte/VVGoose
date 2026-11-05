@@ -43,6 +43,9 @@ vi.mock('@monaco-editor/react', () => ({
       if (onMount) {
         onMount(
           {
+            getOriginalEditor: () => ({
+              addCommand: vi.fn(),
+            }),
             getModifiedEditor: () => ({
               addCommand: vi.fn(),
             }),

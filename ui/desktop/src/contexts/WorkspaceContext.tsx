@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import type { OpenFileTab, ProposedFileDiff } from '../types/fileSystem';
+import type { OpenFileTab, ProposedFileDiff, RecentWorkspace } from '../types/fileSystem';
 import { computeDiffStats } from '../components/Editor/diffUtils';
 import { resolveAcpPermissionRequest } from '../acp/permissionRequests';
+import { parseCodeWorkspace } from '../utils/codeWorkspace';
 import { AppEvents } from '../constants/events';
 
 interface WorkspaceContextType {
@@ -10,6 +11,10 @@ interface WorkspaceContextType {
   selectedFile: string | null;
   setSelectedFile: (filePath: string | null) => void;
   openFolderDialog: () => Promise<string | null>;
+  openWorkspaceFileDialog: () => Promise<string | null>;
+  openCodeWorkspace: (filePath: string) => Promise<boolean>;
+  recentWorkspaces: RecentWorkspace[];
+  openRecentWorkspace: (workspace: RecentWorkspace) => Promise<void>;
   refreshTrigger: number;
   refreshWorkspace: () => void;
   openFiles: OpenFileTab[];
@@ -37,6 +42,7 @@ export const WorkspaceContext = createContext<WorkspaceContextType | null>(null)
 
 const STORAGE_KEY = 'goose_workspace_path';
 const CHAT_WIDTH_KEY = 'goose_chat_width';
+const RECENT_WORKSPACES_KEY = 'goose_recent_workspaces';
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [workspacePath, setWorkspacePathState] = useState<string>(() => {
@@ -53,6 +59,15 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState<boolean>(true);
   const [pendingDiff, setPendingDiff] = useState<ProposedFileDiff | null>(null);
+
+  const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_WORKSPACES_KEY);
+      return raw ? (JSON.parse(raw) as RecentWorkspace[]) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [chatWidth, setChatWidthState] = useState<number>(() => {
     try {
@@ -80,14 +95,93 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setRefreshTrigger((prev) => prev + 1);
   }, []);
 
-  const setWorkspacePath = useCallback((newPath: string) => {
-    setWorkspacePathState(newPath);
-    try {
-      localStorage.setItem(STORAGE_KEY, newPath);
-    } catch {
-      // Ignore storage errors
-    }
-  }, []);
+  const addRecentWorkspace = useCallback(
+    (path: string, customName?: string, isWorkspaceFile = false, workspaceFilePath?: string) => {
+      if (!path) return;
+      const name = customName || path.split(/[/\\]/).filter(Boolean).pop() || path;
+      setRecentWorkspaces((prev) => {
+        const filtered = prev.filter(
+          (w) =>
+            w.path !== path && (!workspaceFilePath || w.workspaceFilePath !== workspaceFilePath)
+        );
+        const updated: RecentWorkspace[] = [
+          {
+            path,
+            name,
+            lastOpened: Date.now(),
+            isWorkspaceFile,
+            workspaceFilePath,
+          },
+          ...filtered,
+        ].slice(0, 10);
+
+        try {
+          localStorage.setItem(RECENT_WORKSPACES_KEY, JSON.stringify(updated));
+        } catch {
+          // Ignore storage errors
+        }
+        return updated;
+      });
+    },
+    []
+  );
+
+  const setWorkspacePath = useCallback(
+    (newPath: string) => {
+      setWorkspacePathState(newPath);
+      try {
+        localStorage.setItem(STORAGE_KEY, newPath);
+      } catch {
+        // Ignore storage errors
+      }
+      if (newPath) {
+        addRecentWorkspace(newPath);
+      }
+    },
+    [addRecentWorkspace]
+  );
+
+  const openCodeWorkspace = useCallback(
+    async (workspaceFilePath: string): Promise<boolean> => {
+      if (!window.electron?.workspaceReadFile) return false;
+      try {
+        const res = await window.electron.workspaceReadFile(workspaceFilePath);
+        if (res && res.found && res.content) {
+          const parsed = parseCodeWorkspace(res.content, workspaceFilePath);
+          if (parsed) {
+            setWorkspacePathState(parsed.rootPath);
+            try {
+              localStorage.setItem(STORAGE_KEY, parsed.rootPath);
+            } catch {
+              // Ignore
+            }
+            addRecentWorkspace(parsed.rootPath, parsed.name, true, workspaceFilePath);
+            setSelectedFile(null);
+            refreshWorkspace();
+            return true;
+          }
+        }
+        return false;
+      } catch (err) {
+        console.error('Failed to open .code-workspace file:', err);
+        return false;
+      }
+    },
+    [addRecentWorkspace, refreshWorkspace]
+  );
+
+  const openRecentWorkspace = useCallback(
+    async (workspace: RecentWorkspace) => {
+      if (workspace.isWorkspaceFile && workspace.workspaceFilePath) {
+        await openCodeWorkspace(workspace.workspaceFilePath);
+      } else {
+        setWorkspacePath(workspace.path);
+        setSelectedFile(null);
+        refreshWorkspace();
+      }
+    },
+    [openCodeWorkspace, setWorkspacePath, refreshWorkspace]
+  );
 
   // Listen for file changes from Electron main process
   useEffect(() => {
@@ -112,6 +206,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const selected = await window.electron.selectFileOrDirectory(workspacePath || undefined);
       if (selected) {
+        if (selected.endsWith('.code-workspace')) {
+          await openCodeWorkspace(selected);
+          return selected;
+        }
         setWorkspacePath(selected);
         setSelectedFile(null);
         refreshWorkspace();
@@ -122,7 +220,28 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Failed to open directory dialog:', error);
       return null;
     }
-  }, [workspacePath, setWorkspacePath, refreshWorkspace]);
+  }, [workspacePath, setWorkspacePath, openCodeWorkspace, refreshWorkspace]);
+
+  const openWorkspaceFileDialog = useCallback(async (): Promise<string | null> => {
+    if (!window.electron?.selectFileOrDirectory) return null;
+    try {
+      const selected = await window.electron.selectFileOrDirectory(workspacePath || undefined);
+      if (selected) {
+        if (selected.endsWith('.code-workspace')) {
+          await openCodeWorkspace(selected);
+        } else {
+          setWorkspacePath(selected);
+        }
+        setSelectedFile(null);
+        refreshWorkspace();
+        return selected;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to open workspace dialog:', error);
+      return null;
+    }
+  }, [workspacePath, openCodeWorkspace, setWorkspacePath, refreshWorkspace]);
 
   const openFile = useCallback(
     async (filePath: string) => {
@@ -362,6 +481,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         selectedFile,
         setSelectedFile,
         openFolderDialog,
+        openWorkspaceFileDialog,
+        openCodeWorkspace,
+        recentWorkspaces,
+        openRecentWorkspace,
         refreshTrigger,
         refreshWorkspace,
         openFiles,

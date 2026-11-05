@@ -31,3 +31,4 @@ describe('computeDiffStats', () => {
     expect(stats.deleted).toBe(2);
   });
 });
+

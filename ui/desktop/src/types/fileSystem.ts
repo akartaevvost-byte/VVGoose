@@ -52,3 +52,11 @@ export interface ProposedFileDiff {
     generation?: string;
   };
 }
+
+export interface RecentWorkspace {
+  path: string;
+  name: string;
+  lastOpened: number;
+  isWorkspaceFile?: boolean;
+  workspaceFilePath?: string;
+}

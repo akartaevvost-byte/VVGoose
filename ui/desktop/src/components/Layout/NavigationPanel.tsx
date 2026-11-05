@@ -22,6 +22,7 @@ import type { ProjectGroup } from '../../utils/projectSessions';
 import { defineMessages, useIntl } from '../../i18n';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { acpUpdateWorkingDir } from '../../acp/sessions';
 
 type StreamState = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -334,6 +335,12 @@ export const Navigation: React.FC<{
       setWorkspacePath(activeSession.workingDir);
     }
   }, [activeSession?.workingDir, workspacePath, setWorkspacePath]);
+
+  useEffect(() => {
+    if (activeSession && workspacePath && activeSession.workingDir !== workspacePath) {
+      void acpUpdateWorkingDir(activeSession.id, workspacePath);
+    }
+  }, [activeSession, workspacePath]);
 
   const toggleProjectCollapsed = useCallback((path: string) => {
     setCollapsedProjects((prev) => {
