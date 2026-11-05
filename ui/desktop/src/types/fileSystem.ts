@@ -28,3 +28,11 @@ export interface WorkspaceFileContentResult {
   error: string | null;
   found: boolean;
 }
+
+export interface OpenFileTab {
+  path: string;
+  name: string;
+  content: string;
+  originalContent: string;
+  isDirty: boolean;
+}

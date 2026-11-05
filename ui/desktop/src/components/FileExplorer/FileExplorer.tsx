@@ -1,18 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Folder,
-  FolderOpen,
-  File,
-  FileCode,
-  FileText,
-  ChevronRight,
-  ChevronDown,
-  RotateCw,
-  Package,
-} from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, RotateCw } from 'lucide-react';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import type { WorkspaceFileNode } from '../../types/fileSystem';
 import { FileContextMenu } from './FileContextMenu';
+import { getFileIcon } from './fileIcons';
 import { cn } from '../../utils';
 
 interface FileTreeNodeProps {
@@ -24,40 +15,6 @@ interface FileTreeNodeProps {
   selectedFile: string | null;
   onSelectFile: (filePath: string) => void;
   onContextMenu: (e: React.MouseEvent, node: WorkspaceFileNode) => void;
-}
-
-function getFileIcon(filename: string, isDirectory: boolean, isExpanded: boolean) {
-  if (isDirectory) {
-    return isExpanded ? (
-      <FolderOpen className="w-4 h-4 text-goose-teal flex-shrink-0" />
-    ) : (
-      <Folder className="w-4 h-4 text-goose-teal flex-shrink-0" />
-    );
-  }
-
-  const ext = filename.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'rs':
-      return <span className="text-xs mr-0.5">🦀</span>;
-    case 'ts':
-    case 'tsx':
-    case 'js':
-    case 'jsx':
-    case 'py':
-      return <FileCode className="w-4 h-4 text-blue-400 flex-shrink-0" />;
-    case 'md':
-    case 'txt':
-    case 'doc':
-      return <FileText className="w-4 h-4 text-neutral-300 flex-shrink-0" />;
-    case 'toml':
-    case 'json':
-    case 'yaml':
-    case 'yml':
-    case 'lock':
-      return <Package className="w-4 h-4 text-yellow-400 flex-shrink-0" />;
-    default:
-      return <File className="w-4 h-4 text-text-secondary flex-shrink-0" />;
-  }
 }
 
 const FileTreeNode: React.FC<FileTreeNodeProps> = ({
@@ -181,6 +138,8 @@ export const FileExplorer: React.FC = () => {
     openFolderDialog,
     refreshTrigger,
     refreshWorkspace,
+    openFile,
+    closeFile,
   } = useWorkspace();
 
   const [rootNodes, setRootNodes] = useState<WorkspaceFileNode[]>([]);
@@ -308,6 +267,14 @@ export const FileExplorer: React.FC = () => {
     });
   };
 
+  const handleSelectFile = useCallback(
+    (filePath: string) => {
+      setSelectedFile(filePath);
+      void openFile(filePath);
+    },
+    [setSelectedFile, openFile]
+  );
+
   const handleConfirmAction = async () => {
     if (!actionModal) return;
     const { type, targetPath, targetNode, inputValue } = actionModal;
@@ -316,6 +283,7 @@ export const FileExplorer: React.FC = () => {
       if (type === 'create-file' && inputValue.trim()) {
         const fullPath = `${targetPath}/${inputValue.trim()}`;
         await window.electron.workspaceCreateFile(fullPath);
+        void openFile(fullPath);
       } else if (type === 'create-folder' && inputValue.trim()) {
         const fullPath = `${targetPath}/${inputValue.trim()}`;
         await window.electron.workspaceCreateDirectory(fullPath);
@@ -323,8 +291,11 @@ export const FileExplorer: React.FC = () => {
         const parentDir = targetPath.substring(0, targetPath.lastIndexOf('/'));
         const newPath = `${parentDir}/${inputValue.trim()}`;
         await window.electron.workspaceRenamePath(targetPath, newPath);
+        closeFile(targetPath);
+        void openFile(newPath);
       } else if (type === 'delete') {
         await window.electron.workspaceDeletePath(targetPath);
+        closeFile(targetPath);
       }
       refreshWorkspace();
     } catch (err) {
@@ -389,7 +360,7 @@ export const FileExplorer: React.FC = () => {
               toggleDir={toggleDir}
               dirChildren={dirChildren}
               selectedFile={selectedFile}
-              onSelectFile={setSelectedFile}
+              onSelectFile={handleSelectFile}
               onContextMenu={handleContextMenu}
             />
           ))

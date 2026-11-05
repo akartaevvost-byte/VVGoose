@@ -2,14 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IpcRendererEvent } from 'electron';
 import { Outlet, useLocation } from 'react-router';
 import { motion } from 'framer-motion';
-import { PanelLeft } from 'lucide-react';
+import { PanelLeft, Columns2 } from 'lucide-react';
 import { defineMessages, useIntl } from '../../i18n';
 import { Button } from '../ui/button';
 import ChatSessionsContainer from '../ChatSessionsContainer';
 import { useChatContext } from '../../contexts/ChatContext';
 import { NavigationProvider, useNavigationContext } from './NavigationContext';
-import { WorkspaceProvider } from '../../contexts/WorkspaceContext';
+import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
 import { Navigation } from './NavigationPanel';
+import { EditorArea } from '../Editor/EditorArea';
 import { Z_INDEX } from './constants';
 import { cn } from '../../utils';
 import { UserInput } from '../../types/message';
@@ -23,6 +24,10 @@ const i18n = defineMessages({
   collapseNavigation: {
     id: 'appLayout.collapseNavigation',
     defaultMessage: 'Collapse navigation',
+  },
+  toggleEditor: {
+    id: 'appLayout.toggleEditor',
+    defaultMessage: 'Toggle editor',
   },
 });
 
@@ -59,17 +64,19 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   }, [safeIsMacOS]);
 
   const { isNavExpanded, setIsNavExpanded, navWidth, setNavWidth } = useNavigationContext();
-  const [isDragging, setIsDragging] = useState(false);
-  const isResizing = useRef(false);
-  const startX = useRef(0);
-  const startWidth = useRef(0);
+  const { isEditorVisible, setIsEditorVisible, chatWidth, setChatWidth } = useWorkspace();
 
-  const handleResizeMouseDown = useCallback(
+  const [isNavDragging, setIsNavDragging] = useState(false);
+  const isNavResizing = useRef(false);
+  const startNavX = useRef(0);
+  const startNavWidth = useRef(0);
+
+  const handleNavResizeMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      isResizing.current = true;
-      startX.current = e.clientX;
-      startWidth.current = navWidth;
-      setIsDragging(true);
+      isNavResizing.current = true;
+      startNavX.current = e.clientX;
+      startNavWidth.current = navWidth;
+      setIsNavDragging(true);
       e.preventDefault();
     },
     [navWidth]
@@ -77,13 +84,13 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current) return;
-      setNavWidth(startWidth.current + (e.clientX - startX.current));
+      if (!isNavResizing.current) return;
+      setNavWidth(startNavWidth.current + (e.clientX - startNavX.current));
     };
     const handleMouseUp = () => {
-      if (isResizing.current) {
-        isResizing.current = false;
-        setIsDragging(false);
+      if (isNavResizing.current) {
+        isNavResizing.current = false;
+        setIsNavDragging(false);
       }
     };
     window.addEventListener('mousemove', handleMouseMove);
@@ -93,6 +100,57 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [setNavWidth]);
+
+  // Chat panel splitter resizing
+  const [, setIsChatDragging] = useState(false);
+  const isChatResizing = useRef(false);
+  const startChatX = useRef(0);
+  const startChatWidth = useRef(0);
+
+  const handleChatResizeMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      isChatResizing.current = true;
+      startChatX.current = e.clientX;
+      startChatWidth.current = chatWidth;
+      setIsChatDragging(true);
+      e.preventDefault();
+    },
+    [chatWidth]
+  );
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isChatResizing.current) return;
+      const delta = e.clientX - startChatX.current;
+      setChatWidth(startChatWidth.current - delta);
+    };
+    const handleMouseUp = () => {
+      if (isChatResizing.current) {
+        isChatResizing.current = false;
+        setIsChatDragging(false);
+      }
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [setChatWidth]);
+
+  // Cmd+B / Ctrl+B to toggle navigation sidebar (File Explorer)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        e.preventDefault();
+        setIsNavExpanded(!isNavExpanded);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isNavExpanded, setIsNavExpanded]);
 
   if (!chatContext) {
     throw new Error('AppLayoutContent must be used within ChatProvider');
@@ -121,6 +179,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   const navToggleTitle = intl.formatMessage(
     isNavExpanded ? i18n.collapseNavigation : i18n.openNavigation
   );
+  const editorToggleTitle = intl.formatMessage(i18n.toggleEditor);
 
   return (
     <div className="flex flex-1 w-full h-full relative animate-fade-in bg-background-primary flex-row">
@@ -138,9 +197,22 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         >
           <PanelLeft className="w-5 h-5" />
         </Button>
+
+        {isOnPairRoute && (
+          <Button
+            onClick={() => setIsEditorVisible((v) => !v)}
+            className="no-drag hover:!bg-background-tertiary"
+            variant="ghost"
+            size="xs"
+            title={editorToggleTitle}
+            aria-label={editorToggleTitle}
+          >
+            <Columns2 className="w-4 h-4 text-text-secondary" />
+          </Button>
+        )}
       </div>
 
-      {/* Main content with navigation. Shared white canvas; the sidebar is a
+      {/* Main content with navigation. Shared canvas; the sidebar is a
           rounded outlined card floating on it with breathing room. */}
       <div className="flex flex-1 w-full h-full min-h-0 flex-row">
         <motion.div
@@ -148,7 +220,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
           initial={false}
           animate={{ width: isNavExpanded ? navWidth : 0 }}
           transition={
-            isDragging ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 40 }
+            isNavDragging ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 40 }
           }
           style={{ height: '100%' }}
           className="relative flex-shrink-0 overflow-hidden h-full p-2"
@@ -159,24 +231,61 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
           {isNavExpanded && (
             <div
               className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-border-primary/30 transition-colors"
-              onMouseDown={handleResizeMouseDown}
+              onMouseDown={handleNavResizeMouseDown}
             />
           )}
         </motion.div>
 
-        {/* Main content — no border / no card; just flows on the canvas. */}
-        <div className="flex-1 overflow-hidden min-h-0">
-          <Outlet />
-          {/* Always render ChatSessionsContainer to keep SSE connections alive.
-              When navigating away from /pair, hide it with CSS */}
-          <div className={isOnPairRoute ? 'contents' : 'hidden'}>
-            <ChatSessionsContainer
-              setChat={setChat}
-              activeSessions={activeSessions}
-              liveVoice={liveVoice}
-            />
+        {/* Workspace 3-Panel or Standard Route View */}
+        {isOnPairRoute ? (
+          <div className="flex flex-1 w-full h-full min-h-0 flex-row overflow-hidden">
+            {/* Center Panel: Editor Area */}
+            {isEditorVisible && (
+              <div className="flex-1 h-full min-w-0 p-2 pl-0">
+                <EditorArea />
+              </div>
+            )}
+
+            {/* Splitter between Editor and Chat */}
+            {isEditorVisible && (
+              <div
+                className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
+                onMouseDown={handleChatResizeMouseDown}
+                title="Перетащите для изменения ширины"
+              />
+            )}
+
+            {/* Right Panel: Goose Agent Chat */}
+            <div
+              style={{ width: isEditorVisible ? chatWidth : '100%' }}
+              className={cn(
+                'h-full p-2 pl-0 flex flex-col min-w-0',
+                isEditorVisible ? 'flex-shrink-0' : 'flex-1'
+              )}
+            >
+              <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
+                <ChatSessionsContainer
+                  setChat={setChat}
+                  activeSessions={activeSessions}
+                  liveVoice={liveVoice}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 overflow-hidden min-h-0">
+            <Outlet />
+            {/* Always render ChatSessionsContainer to keep SSE connections alive.
+                When navigating away from /pair, hide it with CSS */}
+            <div className="hidden">
+              <ChatSessionsContainer
+                setChat={setChat}
+                activeSessions={activeSessions}
+                liveVoice={liveVoice}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

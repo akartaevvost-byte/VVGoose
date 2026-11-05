@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
-import { MessageSquarePlus, Copy, FilePlus, FolderPlus, Edit2, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useContext } from 'react';
+import { MessageSquarePlus, Copy, FilePlus, FolderPlus, Edit2, Trash2, Code } from 'lucide-react';
 import type { WorkspaceFileNode } from '../../types/fileSystem';
 import { AppEvents } from '../../constants/events';
+import { WorkspaceContext } from '../../contexts/WorkspaceContext';
 
 interface FileContextMenuProps {
   x: number;
@@ -12,6 +13,7 @@ interface FileContextMenuProps {
   onCreateFolder: (targetDir: string) => void;
   onRename: (node: WorkspaceFileNode) => void;
   onDelete: (node: WorkspaceFileNode) => void;
+  onOpenFile?: (path: string) => void;
 }
 
 export const FileContextMenu: React.FC<FileContextMenuProps> = ({
@@ -23,6 +25,7 @@ export const FileContextMenu: React.FC<FileContextMenuProps> = ({
   onCreateFolder,
   onRename,
   onDelete,
+  onOpenFile,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -83,12 +86,33 @@ export const FileContextMenu: React.FC<FileContextMenuProps> = ({
     ? node.path
     : node.path.substring(0, node.path.lastIndexOf('/'));
 
+  const workspace = useContext(WorkspaceContext);
+
+  const handleOpenInEditor = () => {
+    if (onOpenFile) {
+      onOpenFile(node.path);
+    } else if (workspace?.openFile) {
+      void workspace.openFile(node.path);
+    }
+    onClose();
+  };
+
   return (
     <div
       ref={menuRef}
       style={{ top: `${adjustedY}px`, left: `${adjustedX}px` }}
       className="fixed z-50 w-56 bg-background-secondary border border-border-primary rounded-lg shadow-xl py-1 text-xs select-none animate-in fade-in zoom-in-95 duration-100"
     >
+      {!node.isDirectory && (
+        <button
+          onClick={handleOpenInEditor}
+          className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-background-tertiary text-text-primary text-left transition-colors"
+        >
+          <Code className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+          <span className="flex-1 truncate">Открыть в редакторе</span>
+        </button>
+      )}
+
       <button
         onClick={handleAddToChat}
         className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-background-tertiary text-text-primary text-left transition-colors"
