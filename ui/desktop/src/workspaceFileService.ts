@@ -15,12 +15,48 @@ import type {
 const execFileAsync = promisify(execFile);
 
 /**
- * Executes Git in the workspace directory to get file statuses
+ * Validates that a target path resides within the specified workspace root.
+ * Throws an Error if a path traversal attempt is detected.
+ */
+export function assertWithinWorkspace(filePath: string, workspaceRoot: string): string {
+  const resolved = path.resolve(expandTilde(filePath));
+  const root = path.resolve(expandTilde(workspaceRoot));
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error(`Access denied: ${resolved} is outside workspace ${root}`);
+  }
+  return resolved;
+}
+
+interface GitStatusCacheEntry {
+  timestamp: number;
+  statuses: Record<string, GitFileStatus>;
+}
+
+const gitStatusCache = new Map<string, GitStatusCacheEntry>();
+const GIT_STATUS_CACHE_TTL_MS = 2000;
+
+export function invalidateGitStatusCache(workspacePath?: string): void {
+  if (workspacePath) {
+    gitStatusCache.delete(path.resolve(expandTilde(workspacePath)));
+  } else {
+    gitStatusCache.clear();
+  }
+}
+
+/**
+ * Executes Git in the workspace directory to get file statuses with a short TTL cache
  */
 export async function getWorkspaceGitStatuses(
-  workspacePath: string
+  workspacePath: string,
+  bypassCache = false
 ): Promise<Record<string, GitFileStatus>> {
-  const expandedPath = expandTilde(workspacePath);
+  const expandedPath = path.resolve(expandTilde(workspacePath));
+  const now = Date.now();
+  const cached = gitStatusCache.get(expandedPath);
+  if (!bypassCache && cached && now - cached.timestamp < GIT_STATUS_CACHE_TTL_MS) {
+    return cached.statuses;
+  }
+
   try {
     const { stdout } = await execFileAsync(
       'git',
@@ -73,6 +109,7 @@ export async function getWorkspaceGitStatuses(
       statusMap[normalizedPath] = status;
     }
 
+    gitStatusCache.set(expandedPath, { timestamp: Date.now(), statuses: statusMap });
     return statusMap;
   } catch {
     // If Git is not installed or the directory is not a Git repo, return empty map
@@ -88,8 +125,9 @@ export async function readWorkspaceDirectory(
   relativeDir = '',
   options?: WorkspaceFileTreeOptions
 ): Promise<WorkspaceFileNode[]> {
-  const expandedRoot = expandTilde(workspaceRoot);
+  const expandedRoot = path.resolve(expandTilde(workspaceRoot));
   const targetDir = path.resolve(expandedRoot, relativeDir);
+  assertWithinWorkspace(targetDir, expandedRoot);
 
   try {
     const entries = await fs.readdir(targetDir, { withFileTypes: true });
@@ -168,9 +206,18 @@ export async function readWorkspaceDirectory(
 /**
  * Safely reads the text content of a workspace file
  */
-export async function readWorkspaceFile(filePath: string): Promise<WorkspaceFileContentResult> {
-  const expandedPath = expandTilde(filePath);
+export async function readWorkspaceFile(
+  filePath: string,
+  workspaceRoot?: string
+): Promise<WorkspaceFileContentResult> {
+  let expandedPath = expandTilde(filePath);
   try {
+    if (workspaceRoot) {
+      expandedPath = assertWithinWorkspace(expandedPath, workspaceRoot);
+    } else {
+      expandedPath = path.resolve(expandedPath);
+    }
+
     const stats = await fs.stat(expandedPath);
     if (!stats.isFile()) {
       return {
@@ -209,7 +256,7 @@ export async function readWorkspaceFile(filePath: string): Promise<WorkspaceFile
     return {
       content: '',
       filePath: expandedPath,
-      error: isEnoent ? null : 'Failed to read file',
+      error: isEnoent ? null : error instanceof Error ? error.message : 'Failed to read file',
       found: false,
     };
   }
@@ -220,13 +267,21 @@ export async function readWorkspaceFile(filePath: string): Promise<WorkspaceFile
  */
 export async function createWorkspaceFile(
   filePath: string,
-  content = ''
+  content = '',
+  workspaceRoot?: string
 ): Promise<WorkspaceOperationResult> {
-  const expandedPath = expandTilde(filePath);
   try {
+    let expandedPath = expandTilde(filePath);
+    if (workspaceRoot) {
+      expandedPath = assertWithinWorkspace(expandedPath, workspaceRoot);
+    } else {
+      expandedPath = path.resolve(expandedPath);
+    }
+
     const parentDir = path.dirname(expandedPath);
     await fs.mkdir(parentDir, { recursive: true });
     await fs.writeFile(expandedPath, content, { encoding: 'utf8' });
+    invalidateGitStatusCache(workspaceRoot);
     return { success: true };
   } catch (error) {
     return {
@@ -239,10 +294,20 @@ export async function createWorkspaceFile(
 /**
  * Creates a new directory at the specified path
  */
-export async function createWorkspaceDirectory(dirPath: string): Promise<WorkspaceOperationResult> {
-  const expandedPath = expandTilde(dirPath);
+export async function createWorkspaceDirectory(
+  dirPath: string,
+  workspaceRoot?: string
+): Promise<WorkspaceOperationResult> {
   try {
+    let expandedPath = expandTilde(dirPath);
+    if (workspaceRoot) {
+      expandedPath = assertWithinWorkspace(expandedPath, workspaceRoot);
+    } else {
+      expandedPath = path.resolve(expandedPath);
+    }
+
     await fs.mkdir(expandedPath, { recursive: true });
+    invalidateGitStatusCache(workspaceRoot);
     return { success: true };
   } catch (error) {
     return {
@@ -257,12 +322,22 @@ export async function createWorkspaceDirectory(dirPath: string): Promise<Workspa
  */
 export async function renameWorkspacePath(
   oldPath: string,
-  newPath: string
+  newPath: string,
+  workspaceRoot?: string
 ): Promise<WorkspaceOperationResult> {
-  const expandedOld = expandTilde(oldPath);
-  const expandedNew = expandTilde(newPath);
   try {
+    let expandedOld = expandTilde(oldPath);
+    let expandedNew = expandTilde(newPath);
+    if (workspaceRoot) {
+      expandedOld = assertWithinWorkspace(expandedOld, workspaceRoot);
+      expandedNew = assertWithinWorkspace(expandedNew, workspaceRoot);
+    } else {
+      expandedOld = path.resolve(expandedOld);
+      expandedNew = path.resolve(expandedNew);
+    }
+
     await fs.rename(expandedOld, expandedNew);
+    invalidateGitStatusCache(workspaceRoot);
     return { success: true };
   } catch (error) {
     return {
@@ -275,10 +350,20 @@ export async function renameWorkspacePath(
 /**
  * Deletes a file or directory
  */
-export async function deleteWorkspacePath(targetPath: string): Promise<WorkspaceOperationResult> {
-  const expandedPath = expandTilde(targetPath);
+export async function deleteWorkspacePath(
+  targetPath: string,
+  workspaceRoot?: string
+): Promise<WorkspaceOperationResult> {
   try {
+    let expandedPath = expandTilde(targetPath);
+    if (workspaceRoot) {
+      expandedPath = assertWithinWorkspace(expandedPath, workspaceRoot);
+    } else {
+      expandedPath = path.resolve(expandedPath);
+    }
+
     await fs.rm(expandedPath, { recursive: true, force: true });
+    invalidateGitStatusCache(workspaceRoot);
     return { success: true };
   } catch (error) {
     return {
@@ -296,10 +381,17 @@ export class WorkspaceWatcherManager {
     number,
     {
       watcher: FSWatcher;
-      debounceTimer: NodeJS.Timeout | null;
+      debounceTimer: ReturnType<typeof setTimeout> | null;
       workspacePath: string;
     }
   >();
+
+  /**
+   * Returns current active workspace path for a window
+   */
+  getWorkspacePath(windowId: number): string | undefined {
+    return this.watchers.get(windowId)?.workspacePath;
+  }
 
   /**
    * Starts watching a workspace directory for changes
@@ -311,7 +403,7 @@ export class WorkspaceWatcherManager {
   ): void {
     this.stopWatching(windowId);
 
-    const expandedPath = expandTilde(workspacePath);
+    const expandedPath = path.resolve(expandTilde(workspacePath));
 
     try {
       const watcher = watch(expandedPath, { recursive: true }, (_eventType, filename) => {
@@ -338,8 +430,9 @@ export class WorkspaceWatcherManager {
         }
 
         entry.debounceTimer = setTimeout(() => {
+          invalidateGitStatusCache(expandedPath);
           onChange(expandedPath);
-        }, 150);
+        }, 300);
       });
 
       this.watchers.set(windowId, {

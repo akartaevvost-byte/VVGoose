@@ -241,7 +241,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
           <div className="flex flex-1 w-full h-full min-h-0 flex-row overflow-hidden">
             {/* Center Panel: Editor Area */}
             {isEditorVisible && (
-              <div className="flex-1 h-full min-w-0 p-2 pl-0">
+              <div className="flex-1 h-full min-w-[300px] p-2 pl-0">
                 <EditorArea />
               </div>
             )}

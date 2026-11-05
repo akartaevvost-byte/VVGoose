@@ -10,6 +10,8 @@ import {
   renameWorkspacePath,
   deleteWorkspacePath,
   workspaceWatcherManager,
+  assertWithinWorkspace,
+  getWorkspaceGitStatuses,
 } from './workspaceFileService';
 
 describe('workspaceFileService', () => {
@@ -143,8 +145,46 @@ describe('workspaceFileService', () => {
       const windowId = 999;
       expect(() => {
         workspaceWatcherManager.startWatching(windowId, tempDir, () => {});
+        expect(workspaceWatcherManager.getWorkspacePath(windowId)).toBe(path.resolve(tempDir));
         workspaceWatcherManager.stopWatching(windowId);
+        expect(workspaceWatcherManager.getWorkspacePath(windowId)).toBeUndefined();
       }).not.toThrow();
+    });
+  });
+
+  describe('security and path traversal validation', () => {
+    it('assertWithinWorkspace allows valid subpaths and exact workspace path', () => {
+      const validSubpath = path.join(tempDir, 'sub', 'file.txt');
+      expect(assertWithinWorkspace(validSubpath, tempDir)).toBe(validSubpath);
+      expect(assertWithinWorkspace(tempDir, tempDir)).toBe(tempDir);
+    });
+
+    it('assertWithinWorkspace denies traversal attempts outside workspace', () => {
+      const outsidePath = path.join(tempDir, '..', 'evil.txt');
+      expect(() => assertWithinWorkspace(outsidePath, tempDir)).toThrow(/Access denied/);
+    });
+
+    it('rejects read/write operations outside workspace when workspaceRoot is specified', async () => {
+      const outsideFile = path.resolve(tempDir, '../outside.txt');
+      const readResult = await readWorkspaceFile(outsideFile, tempDir);
+      expect(readResult.found).toBe(false);
+      expect(readResult.error).toContain('Access denied');
+
+      const createResult = await createWorkspaceFile(outsideFile, 'hacked', tempDir);
+      expect(createResult.success).toBe(false);
+      expect(createResult.error).toContain('Access denied');
+
+      const deleteResult = await deleteWorkspacePath(outsideFile, tempDir);
+      expect(deleteResult.success).toBe(false);
+      expect(deleteResult.error).toContain('Access denied');
+    });
+  });
+
+  describe('git status caching', () => {
+    it('returns cached results within TTL', async () => {
+      const status1 = await getWorkspaceGitStatuses(tempDir);
+      const status2 = await getWorkspaceGitStatuses(tempDir);
+      expect(status1).toEqual(status2);
     });
   });
 });

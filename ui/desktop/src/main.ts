@@ -961,7 +961,12 @@ let appConfig = {
 
 const windowMap = new Map<number, BrowserWindow>();
 const appWindows = new Map<string, BrowserWindow>();
+const windowWorkspaces = new Map<number, string>();
 const desktopFileAccess = new DesktopFileAccess();
+
+function getWorkspaceRootForSender(senderId: number): string | undefined {
+  return windowWorkspaces.get(senderId) || workspaceWatcherManager.getWorkspacePath(senderId);
+}
 
 function requireRegularRendererWindow(event: IpcMainInvokeEvent): BrowserWindow {
   const senderWindow = BrowserWindow.fromWebContents(event.sender);
@@ -1452,10 +1457,12 @@ const createChat = async (
     return;
   }
   windowMap.set(windowId, mainWindow);
+  windowWorkspaces.set(windowId, path.resolve(workingDir));
 
   // Handle window closure
   mainWindow.on('closed', () => {
     windowMap.delete(windowId);
+    windowWorkspaces.delete(windowId);
     desktopFileAccess.unbindWindow(windowId);
     workspaceWatcherManager.stopWatching(windowId);
 
@@ -2174,7 +2181,7 @@ ipcMain.handle('get-is-fullscreen', (event) => {
 });
 
 // Add file/directory selection handler
-ipcMain.handle('select-file-or-directory', async (_event, defaultPath?: string) => {
+ipcMain.handle('select-file-or-directory', async (event, defaultPath?: string) => {
   const dialogOptions: OpenDialogOptions = {
     properties: process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'],
   };
@@ -2203,7 +2210,15 @@ ipcMain.handle('select-file-or-directory', async (_event, defaultPath?: string) 
   const result = (await dialog.showOpenDialog(dialogOptions)) as unknown as OpenDialogReturnValue;
 
   if (!result.canceled && result.filePaths.length > 0) {
-    return result.filePaths[0];
+    const selected = result.filePaths[0];
+    try {
+      const stats = await fs.stat(selected);
+      const rootDir = stats.isDirectory() ? selected : path.dirname(selected);
+      windowWorkspaces.set(event.sender.id, path.resolve(rootDir));
+    } catch {
+      // Ignore stat error
+    }
+    return selected;
   }
   return null;
 });
@@ -2369,38 +2384,43 @@ ipcMain.handle('list-files', async (_event, dirPath, extension) => {
   }
 });
 
-ipcMain.handle(
-  'workspace-read-directory',
-  async (_event, workspaceRoot, relativeDir, options) => {
-    return readWorkspaceDirectory(workspaceRoot, relativeDir, options);
-  }
-);
-
-ipcMain.handle('workspace-read-file', async (_event, filePath) => {
-  return readWorkspaceFile(filePath);
+ipcMain.handle('workspace-read-directory', async (event, workspaceRoot, relativeDir, options) => {
+  const root = getWorkspaceRootForSender(event.sender.id) || workspaceRoot;
+  return readWorkspaceDirectory(root, relativeDir, options);
 });
 
-ipcMain.handle('workspace-create-file', async (_event, filePath, content) => {
-  return createWorkspaceFile(filePath, content);
+ipcMain.handle('workspace-read-file', async (event, filePath) => {
+  const root = getWorkspaceRootForSender(event.sender.id);
+  return readWorkspaceFile(filePath, root);
 });
 
-ipcMain.handle('workspace-create-directory', async (_event, dirPath) => {
-  return createWorkspaceDirectory(dirPath);
+ipcMain.handle('workspace-create-file', async (event, filePath, content) => {
+  const root = getWorkspaceRootForSender(event.sender.id);
+  return createWorkspaceFile(filePath, content, root);
 });
 
-ipcMain.handle('workspace-rename-path', async (_event, oldPath, newPath) => {
-  return renameWorkspacePath(oldPath, newPath);
+ipcMain.handle('workspace-create-directory', async (event, dirPath) => {
+  const root = getWorkspaceRootForSender(event.sender.id);
+  return createWorkspaceDirectory(dirPath, root);
 });
 
-ipcMain.handle('workspace-delete-path', async (_event, targetPath) => {
-  return deleteWorkspacePath(targetPath);
+ipcMain.handle('workspace-rename-path', async (event, oldPath, newPath) => {
+  const root = getWorkspaceRootForSender(event.sender.id);
+  return renameWorkspacePath(oldPath, newPath, root);
 });
 
-ipcMain.handle('workspace-get-git-statuses', async (_event, workspacePath) => {
-  return getWorkspaceGitStatuses(workspacePath);
+ipcMain.handle('workspace-delete-path', async (event, targetPath) => {
+  const root = getWorkspaceRootForSender(event.sender.id);
+  return deleteWorkspacePath(targetPath, root);
+});
+
+ipcMain.handle('workspace-get-git-statuses', async (event, workspacePath) => {
+  const root = getWorkspaceRootForSender(event.sender.id) || workspacePath;
+  return getWorkspaceGitStatuses(root);
 });
 
 ipcMain.handle('workspace-start-watching', async (event, workspacePath) => {
+  windowWorkspaces.set(event.sender.id, path.resolve(expandTilde(workspacePath)));
   workspaceWatcherManager.startWatching(event.sender.id, workspacePath, (changedRoot) => {
     if (!event.sender.isDestroyed()) {
       event.sender.send('workspace-files-changed', { rootPath: changedRoot });

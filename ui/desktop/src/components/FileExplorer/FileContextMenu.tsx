@@ -84,7 +84,8 @@ export const FileContextMenu: React.FC<FileContextMenuProps> = ({
 
   const targetDir = node.isDirectory
     ? node.path
-    : node.path.substring(0, node.path.lastIndexOf('/'));
+    : node.path.substring(0, Math.max(node.path.lastIndexOf('/'), node.path.lastIndexOf('\\'))) ||
+      '.';
 
   const workspace = useContext(WorkspaceContext);
 

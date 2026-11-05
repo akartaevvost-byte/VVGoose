@@ -97,4 +97,76 @@ describe('FileExplorer', () => {
       expect(screen.getByText('goose')).toBeDefined();
     });
   });
+
+  it('opens create-file action modal when clicking create file button in header', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockResolvedValue([]),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceCreateFile: vi.fn().mockResolvedValue({ success: true }),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    const createFileBtn = screen.getByTitle('Создать файл в корне проекта');
+    fireEvent.click(createFileBtn);
+
+    expect(screen.getByText('Создать новый файл')).toBeDefined();
+    const input = screen.getByPlaceholderText('Введите имя...');
+    fireEvent.change(input, { target: { value: 'newfile.rs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => {
+      expect(window.electron.workspaceCreateFile).toHaveBeenCalledWith(
+        '/mock/workspace/newfile.rs'
+      );
+    });
+  });
+
+  it('toggles gitignore visibility when clicking eye button', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    const mockNodes: WorkspaceFileNode[] = [
+      {
+        name: 'target',
+        path: '/mock/workspace/target',
+        relativePath: 'target',
+        isDirectory: true,
+        isIgnored: true,
+      },
+    ];
+
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockResolvedValue(mockNodes),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('target')).toBeDefined();
+    });
+
+    const toggleBtn = screen.getByTitle('Скрыть файлы из .gitignore');
+    fireEvent.click(toggleBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText('target')).toBeNull();
+    });
+  });
 });

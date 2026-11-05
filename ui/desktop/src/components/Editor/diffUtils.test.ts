@@ -30,5 +30,18 @@ describe('computeDiffStats', () => {
     expect(stats.added).toBe(3);
     expect(stats.deleted).toBe(2);
   });
-});
 
+  it('detects line reordering instead of reporting 0 changes', () => {
+    const orig = 'A\nB';
+    const mod = 'B\nA';
+    const stats = computeDiffStats(orig, mod);
+    expect(stats.added).toBe(1);
+    expect(stats.deleted).toBe(1);
+  });
+
+  it('handles empty strings properly', () => {
+    expect(computeDiffStats('', '')).toEqual({ added: 0, deleted: 0 });
+    expect(computeDiffStats('', 'line 1\nline 2')).toEqual({ added: 2, deleted: 0 });
+    expect(computeDiffStats('line 1\nline 2', '')).toEqual({ added: 0, deleted: 2 });
+  });
+});

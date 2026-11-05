@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Folder,
   ChevronRight,
@@ -9,41 +9,73 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import { Virtuoso } from 'react-virtuoso';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import type { WorkspaceFileNode } from '../../types/fileSystem';
 import { FileContextMenu } from './FileContextMenu';
 import { getFileIcon } from './fileIcons';
 import { cn } from '../../utils';
+import { toastError } from '../../toasts';
 
-interface FileTreeNodeProps {
+function joinPaths(parent: string, child: string): string {
+  const sep = parent.includes('\\') ? '\\' : '/';
+  const cleanParent = parent.endsWith('/') || parent.endsWith('\\') ? parent.slice(0, -1) : parent;
+  const cleanChild = child.startsWith('/') || child.startsWith('\\') ? child.slice(1) : child;
+  return `${cleanParent}${sep}${cleanChild}`;
+}
+
+function getParentDirPath(p: string): string {
+  const lastIndex = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  return lastIndex > 0 ? p.substring(0, lastIndex) : lastIndex === 0 ? '/' : '.';
+}
+
+interface FlatItem {
   node: WorkspaceFileNode;
   level: number;
-  expandedDirs: Set<string>;
+}
+
+function flattenVisibleTree(
+  nodes: WorkspaceFileNode[],
+  level: number,
+  expandedDirs: Set<string>,
+  dirChildren: Map<string, WorkspaceFileNode[]>,
+  hideIgnored: boolean
+): FlatItem[] {
+  const result: FlatItem[] = [];
+  for (const node of nodes) {
+    if (hideIgnored && node.isIgnored) continue;
+    result.push({ node, level });
+    if (node.isDirectory && expandedDirs.has(node.relativePath)) {
+      const children = dirChildren.get(node.relativePath) || [];
+      if (children.length > 0) {
+        result.push(
+          ...flattenVisibleTree(children, level + 1, expandedDirs, dirChildren, hideIgnored)
+        );
+      }
+    }
+  }
+  return result;
+}
+
+interface FileTreeNodeItemProps {
+  node: WorkspaceFileNode;
+  level: number;
+  isExpanded: boolean;
   toggleDir: (relPath: string) => void;
-  dirChildren: Map<string, WorkspaceFileNode[]>;
   selectedFile: string | null;
   onSelectFile: (filePath: string) => void;
   onContextMenu: (e: React.MouseEvent, node: WorkspaceFileNode) => void;
-  hideIgnored?: boolean;
 }
 
-const FileTreeNode: React.FC<FileTreeNodeProps> = ({
+const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
   node,
   level,
-  expandedDirs,
+  isExpanded,
   toggleDir,
-  dirChildren,
   selectedFile,
   onSelectFile,
   onContextMenu,
-  hideIgnored = false,
 }) => {
-  if (hideIgnored && node.isIgnored) {
-    return null;
-  }
-
-  const isExpanded = expandedDirs.has(node.relativePath);
-  const children = dirChildren.get(node.relativePath) || [];
   const isSelected = selectedFile === node.path;
 
   const handleClick = (e: React.MouseEvent) => {
@@ -69,78 +101,44 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
   const paddingLeft = `${level * 14 + 8}px`;
 
   return (
-    <div>
-      <div
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-        draggable={true}
-        onDragStart={handleDragStart}
-        style={{ paddingLeft }}
-        className={cn(
-          'flex items-center gap-1.5 py-1 pr-2 text-xs cursor-pointer select-none rounded hover:bg-background-tertiary/70 transition-colors',
-          isSelected && 'bg-background-tertiary text-text-primary font-medium',
-          node.isIgnored && 'text-text-muted/60 opacity-60'
-        )}
-        title={node.path}
-      >
-        {node.isDirectory ? (
-          <span className="w-3.5 h-3.5 flex items-center justify-center text-text-secondary">
-            {isExpanded ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
-          </span>
-        ) : (
-          <span className="w-3.5 h-3.5" />
-        )}
-
-        {getFileIcon(node.name, node.isDirectory, isExpanded)}
-
-        <span
-          className={cn(
-            'truncate flex-1',
-            node.gitStatus === 'modified' && 'text-amber-300',
-            node.gitStatus === 'untracked' && 'text-emerald-400'
-          )}
-        >
-          {node.name}
+    <div
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      draggable={true}
+      onDragStart={handleDragStart}
+      style={{ paddingLeft }}
+      className={cn(
+        'flex items-center gap-1.5 py-1 pr-2 text-xs cursor-pointer select-none rounded hover:bg-background-tertiary/70 transition-colors',
+        isSelected && 'bg-background-tertiary text-text-primary font-medium',
+        node.isIgnored && 'text-text-muted/60 opacity-60'
+      )}
+      title={node.path}
+    >
+      {node.isDirectory ? (
+        <span className="w-3.5 h-3.5 flex items-center justify-center text-text-secondary">
+          {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         </span>
+      ) : (
+        <span className="w-3.5 h-3.5" />
+      )}
 
-        {node.gitStatus === 'modified' && (
-          <span className="text-[10px] font-bold text-amber-300 ml-1">M</span>
-        )}
-        {node.gitStatus === 'untracked' && (
-          <span className="text-[10px] font-bold text-emerald-400 ml-1">U</span>
-        )}
-      </div>
+      {getFileIcon(node.name, node.isDirectory, isExpanded)}
 
-      {node.isDirectory && isExpanded && (
-        <div>
-          {children.length === 0 ? (
-            <div
-              style={{ paddingLeft: `${(level + 1) * 14 + 18}px` }}
-              className="py-1 text-[11px] text-text-muted italic"
-            >
-              Пусто
-            </div>
-          ) : (
-            children.map((child) => (
-              <FileTreeNode
-                key={child.path}
-                node={child}
-                level={level + 1}
-                expandedDirs={expandedDirs}
-                toggleDir={toggleDir}
-                dirChildren={dirChildren}
-                selectedFile={selectedFile}
-                onSelectFile={onSelectFile}
-                onContextMenu={onContextMenu}
-                hideIgnored={hideIgnored}
-              />
-            ))
-          )}
-        </div>
+      <span
+        className={cn(
+          'truncate flex-1',
+          node.gitStatus === 'modified' && 'text-amber-300',
+          node.gitStatus === 'untracked' && 'text-emerald-400'
+        )}
+      >
+        {node.name}
+      </span>
+
+      {node.gitStatus === 'modified' && (
+        <span className="text-[10px] font-bold text-amber-300 ml-1">M</span>
+      )}
+      {node.gitStatus === 'untracked' && (
+        <span className="text-[10px] font-bold text-emerald-400 ml-1">U</span>
       )}
     </div>
   );
@@ -160,6 +158,9 @@ export const FileExplorer: React.FC = () => {
 
   const [rootNodes, setRootNodes] = useState<WorkspaceFileNode[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const expandedDirsRef = useRef<Set<string>>(expandedDirs);
+  expandedDirsRef.current = expandedDirs;
+
   const [dirChildren, setDirChildren] = useState<Map<string, WorkspaceFileNode[]>>(new Map());
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hideIgnored, setHideIgnored] = useState<boolean>(false);
@@ -201,7 +202,10 @@ export const FileExplorer: React.FC = () => {
           });
         }
       } catch (err) {
-        console.error('Failed to load directory:', err);
+        toastError({
+          title: 'Ошибка чтения каталога',
+          msg: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         setIsLoading(false);
       }
@@ -209,21 +213,16 @@ export const FileExplorer: React.FC = () => {
     [workspacePath]
   );
 
-  // Refresh root when workspacePath or refreshTrigger changes
+  // Single effect: refresh root and all currently expanded directories on workspace or refresh trigger
   useEffect(() => {
     loadDirectory('');
-  }, [loadDirectory, refreshTrigger]);
-
-  // Re-fetch all currently expanded directories on refreshTrigger
-  useEffect(() => {
-    if (expandedDirs.size === 0) return;
-    expandedDirs.forEach((dir) => {
+    expandedDirsRef.current.forEach((dir) => {
       loadDirectory(dir);
     });
-  }, [refreshTrigger, loadDirectory, expandedDirs]);
+  }, [loadDirectory, refreshTrigger]);
 
   const toggleDir = useCallback(
-    async (relPath: string) => {
+    (relPath: string) => {
       setExpandedDirs((prev) => {
         const next = new Set(prev);
         if (next.has(relPath)) {
@@ -298,29 +297,64 @@ export const FileExplorer: React.FC = () => {
 
     try {
       if (type === 'create-file' && inputValue.trim()) {
-        const fullPath = `${targetPath}/${inputValue.trim()}`;
-        await window.electron.workspaceCreateFile(fullPath);
-        void openFile(fullPath);
+        const fullPath = joinPaths(targetPath, inputValue.trim());
+        const res = await window.electron.workspaceCreateFile(fullPath);
+        if (res && !res.success) {
+          toastError({
+            title: 'Не удалось создать файл',
+            msg: res.error || 'Ошибка записи на диск',
+          });
+        } else {
+          void openFile(fullPath);
+        }
       } else if (type === 'create-folder' && inputValue.trim()) {
-        const fullPath = `${targetPath}/${inputValue.trim()}`;
-        await window.electron.workspaceCreateDirectory(fullPath);
+        const fullPath = joinPaths(targetPath, inputValue.trim());
+        const res = await window.electron.workspaceCreateDirectory(fullPath);
+        if (res && !res.success) {
+          toastError({
+            title: 'Не удалось создать папку',
+            msg: res.error || 'Ошибка создания папки',
+          });
+        }
       } else if (type === 'rename' && targetNode && inputValue.trim()) {
-        const parentDir = targetPath.substring(0, targetPath.lastIndexOf('/'));
-        const newPath = `${parentDir}/${inputValue.trim()}`;
-        await window.electron.workspaceRenamePath(targetPath, newPath);
-        closeFile(targetPath);
-        void openFile(newPath);
+        const parentDir = getParentDirPath(targetPath);
+        const newPath = joinPaths(parentDir, inputValue.trim());
+        const res = await window.electron.workspaceRenamePath(targetPath, newPath);
+        if (res && !res.success) {
+          toastError({
+            title: 'Не удалось переименовать',
+            msg: res.error || 'Ошибка переименования',
+          });
+        } else {
+          closeFile(targetPath);
+          void openFile(newPath);
+        }
       } else if (type === 'delete') {
-        await window.electron.workspaceDeletePath(targetPath);
-        closeFile(targetPath);
+        const res = await window.electron.workspaceDeletePath(targetPath);
+        if (res && !res.success) {
+          toastError({
+            title: 'Не удалось удалить элемент',
+            msg: res.error || 'Ошибка удаления',
+          });
+        } else {
+          closeFile(targetPath);
+        }
       }
       refreshWorkspace();
     } catch (err) {
-      console.error('Action failed:', err);
+      toastError({
+        title: 'Ошибка операции с файлом',
+        msg: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setActionModal(null);
     }
   };
+
+  const flatItems = useMemo(
+    () => flattenVisibleTree(rootNodes, 0, expandedDirs, dirChildren, hideIgnored),
+    [rootNodes, expandedDirs, dirChildren, hideIgnored]
+  );
 
   const workspaceName = workspacePath ? workspacePath.split(/[/\\]/).filter(Boolean).pop() : null;
 
@@ -384,7 +418,7 @@ export const FileExplorer: React.FC = () => {
       </div>
 
       {/* File Tree List */}
-      <div className="flex-1 overflow-y-auto px-1 py-1.5">
+      <div className="flex-1 overflow-y-auto px-1 py-1.5 min-h-0">
         {!workspacePath ? (
           <div className="flex flex-col items-center justify-center p-4 text-center h-full">
             <p className="text-xs text-text-muted mb-2.5">Папка проекта не открыта</p>
@@ -400,20 +434,40 @@ export const FileExplorer: React.FC = () => {
             {isLoading ? 'Загрузка файлов…' : 'В каталоге нет файлов'}
           </div>
         ) : (
-          rootNodes.map((node) => (
-            <FileTreeNode
-              key={node.path}
-              node={node}
-              level={0}
-              expandedDirs={expandedDirs}
-              toggleDir={toggleDir}
-              dirChildren={dirChildren}
-              selectedFile={selectedFile}
-              onSelectFile={handleSelectFile}
-              onContextMenu={handleContextMenu}
-              hideIgnored={hideIgnored}
-            />
-          ))
+          <Virtuoso
+            style={{ height: '100%' }}
+            totalCount={flatItems.length}
+            initialItemCount={flatItems.length}
+            itemContent={(index) => {
+              const item = flatItems[index];
+              if (!item) return null;
+              const isExpanded = expandedDirs.has(item.node.relativePath);
+              const children = dirChildren.get(item.node.relativePath) || [];
+              const isEmptyDir = item.node.isDirectory && isExpanded && children.length === 0;
+
+              return (
+                <div key={item.node.path}>
+                  <FileTreeNodeItem
+                    node={item.node}
+                    level={item.level}
+                    isExpanded={isExpanded}
+                    toggleDir={toggleDir}
+                    selectedFile={selectedFile}
+                    onSelectFile={handleSelectFile}
+                    onContextMenu={handleContextMenu}
+                  />
+                  {isEmptyDir && (
+                    <div
+                      style={{ paddingLeft: `${(item.level + 1) * 14 + 18}px` }}
+                      className="py-1 text-[11px] text-text-muted italic"
+                    >
+                      Пусто
+                    </div>
+                  )}
+                </div>
+              );
+            }}
+          />
         )}
       </div>
 
@@ -449,7 +503,7 @@ export const FileExplorer: React.FC = () => {
                 }
                 autoFocus
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleConfirmAction();
+                  if (e.key === 'Enter') void handleConfirmAction();
                   if (e.key === 'Escape') setActionModal(null);
                 }}
                 className="w-full px-2.5 py-1.5 text-xs bg-background-primary border border-border-primary rounded-md text-text-primary outline-none focus:border-goose-teal mb-4"
@@ -464,7 +518,7 @@ export const FileExplorer: React.FC = () => {
                 Отмена
               </button>
               <button
-                onClick={handleConfirmAction}
+                onClick={() => void handleConfirmAction()}
                 className={cn(
                   'px-3 py-1 text-xs rounded-md font-medium text-white transition-opacity',
                   actionModal.type === 'delete'

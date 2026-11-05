@@ -41,4 +41,38 @@ describe('parseCodeWorkspace', () => {
       parseCodeWorkspace(JSON.stringify({ folders: [] }), '/path/test.code-workspace')
     ).toBeNull();
   });
+
+  it('parses JSONC with single-line, block comments and trailing commas', () => {
+    const jsonc = `
+      {
+        // This is a comment about folders
+        "folders": [
+          /* Multi-line
+             comment */
+          {
+            "path": "src",
+            "name": "App Source",
+          }, // trailing comma
+        ],
+        "settings": {
+          "editor.tabSize": 2,
+        },
+      }
+    `;
+
+    const result = parseCodeWorkspace(jsonc, '/Users/developer/project/workspace.code-workspace');
+    expect(result).not.toBeNull();
+    expect(result?.rootPath).toBe('/Users/developer/project/src');
+    expect(result?.name).toBe('App Source');
+  });
+
+  it('handles Windows backslash file paths properly', () => {
+    const json = JSON.stringify({
+      folders: [{ path: 'backend' }],
+    });
+
+    const result = parseCodeWorkspace(json, 'C:\\Users\\developer\\project\\app.code-workspace');
+    expect(result).not.toBeNull();
+    expect(result?.rootPath).toBe('C:/Users/developer/project/backend');
+  });
 });

@@ -8,6 +8,35 @@ import { getLanguageFromFilename } from './languageDetector';
 import { Save, Check, X, GitCompare } from 'lucide-react';
 import { cn } from '../../utils';
 
+const DIFF_EDITOR_OPTIONS = {
+  renderSideBySide: false, // Inline unified diff
+  readOnly: true,
+  fontSize: 13,
+  lineNumbers: 'on' as const,
+  minimap: { enabled: true },
+  automaticLayout: true,
+  scrollBeyondLastLine: false,
+  fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+  smoothScrolling: true,
+  padding: { top: 8, bottom: 8 },
+};
+
+const EDITOR_OPTIONS = {
+  fontSize: 13,
+  lineNumbers: 'on' as const,
+  minimap: { enabled: true },
+  scrollBeyondLastLine: false,
+  automaticLayout: true,
+  tabSize: 2,
+  wordWrap: 'off' as const,
+  folding: true,
+  foldingHighlight: true,
+  showFoldingControls: 'always' as const,
+  fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+  smoothScrolling: true,
+  padding: { top: 8, bottom: 8 },
+};
+
 export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
   const {
     activeFile,
@@ -38,8 +67,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
         void acceptPendingDiff();
       } else if (
         pendingDiff &&
-        (e.metaKey ||
-          (e.ctrlKey && (e.key === 'Backspace' || e.key === 'Delete')) ||
+        (((e.metaKey || e.ctrlKey) && (e.key === 'Backspace' || e.key === 'Delete')) ||
           e.key === 'Escape')
       ) {
         e.preventDefault();
@@ -183,19 +211,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
             modified={pendingDiff.proposedContent}
             theme="goose-dark"
             onMount={handleDiffEditorMount}
-            options={{
-              renderSideBySide: false, // Inline unified diff
-              readOnly: true,
-              fontSize: 13,
-              lineNumbers: 'on',
-              minimap: { enabled: true },
-              automaticLayout: true,
-              scrollBeyondLastLine: false,
-              fontFamily:
-                'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-              smoothScrolling: true,
-              padding: { top: 8, bottom: 8 },
-            }}
+            options={DIFF_EDITOR_OPTIONS}
           />
         ) : activeFile ? (
           <Editor
@@ -206,22 +222,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
             theme="goose-dark"
             onMount={handleEditorMount}
             onChange={(value) => updateFileContent(activeFile.path, value || '')}
-            options={{
-              fontSize: 13,
-              lineNumbers: 'on',
-              minimap: { enabled: true },
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              tabSize: 2,
-              wordWrap: 'off',
-              folding: true,
-              foldingHighlight: true,
-              showFoldingControls: 'always',
-              fontFamily:
-                'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-              smoothScrolling: true,
-              padding: { top: 8, bottom: 8 },
-            }}
+            options={EDITOR_OPTIONS}
           />
         ) : openFiles.length === 0 ? (
           <EmptyEditorView />
