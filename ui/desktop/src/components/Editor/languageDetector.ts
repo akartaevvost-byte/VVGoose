@@ -58,3 +58,4 @@ export function getLanguageFromFilename(filename: string): string {
       return 'plaintext';
   }
 }
+

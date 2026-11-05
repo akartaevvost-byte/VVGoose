@@ -159,3 +159,4 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     </div>
   );
 };
+

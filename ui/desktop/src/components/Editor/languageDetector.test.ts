@@ -25,3 +25,4 @@ describe('getLanguageFromFilename', () => {
     expect(getLanguageFromFilename('')).toBe('plaintext');
   });
 });
+
