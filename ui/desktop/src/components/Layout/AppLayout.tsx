@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IpcRendererEvent } from 'electron';
 import { Outlet, useLocation } from 'react-router';
 import { motion } from 'framer-motion';
-import { PanelLeft, Columns2 } from 'lucide-react';
+import { PanelLeft, Columns2, FolderTree } from 'lucide-react';
 import { defineMessages, useIntl } from '../../i18n';
 import { Button } from '../ui/button';
 import ChatSessionsContainer from '../ChatSessionsContainer';
@@ -11,6 +11,7 @@ import { NavigationProvider, useNavigationContext } from './NavigationContext';
 import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
 import { Navigation } from './NavigationPanel';
 import { EditorArea } from '../Editor/EditorArea';
+import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { Z_INDEX } from './constants';
 import { cn } from '../../utils';
 import { UserInput } from '../../types/message';
@@ -28,6 +29,10 @@ const i18n = defineMessages({
   toggleEditor: {
     id: 'appLayout.toggleEditor',
     defaultMessage: 'Toggle editor',
+  },
+  toggleExplorer: {
+    id: 'appLayout.toggleExplorer',
+    defaultMessage: 'Toggle File Explorer',
   },
 });
 
@@ -64,7 +69,16 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   }, [safeIsMacOS]);
 
   const { isNavExpanded, setIsNavExpanded, navWidth, setNavWidth } = useNavigationContext();
-  const { isEditorVisible, setIsEditorVisible, chatWidth, setChatWidth } = useWorkspace();
+  const {
+    isEditorVisible,
+    setIsEditorVisible,
+    chatWidth,
+    setChatWidth,
+    isExplorerVisible,
+    setIsExplorerVisible,
+    explorerWidth,
+    setExplorerWidth,
+  } = useWorkspace();
 
   const [isNavDragging, setIsNavDragging] = useState(false);
   const isNavResizing = useRef(false);
@@ -101,8 +115,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     };
   }, [setNavWidth]);
 
-  // Chat panel splitter resizing
-  const [, setIsChatDragging] = useState(false);
+  // Chat panel splitter resizing (Chat is on the left)
   const isChatResizing = useRef(false);
   const startChatX = useRef(0);
   const startChatWidth = useRef(0);
@@ -112,7 +125,6 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
       isChatResizing.current = true;
       startChatX.current = e.clientX;
       startChatWidth.current = chatWidth;
-      setIsChatDragging(true);
       e.preventDefault();
     },
     [chatWidth]
@@ -122,12 +134,11 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     const handleMouseMove = (e: MouseEvent) => {
       if (!isChatResizing.current) return;
       const delta = e.clientX - startChatX.current;
-      setChatWidth(startChatWidth.current - delta);
+      setChatWidth(startChatWidth.current + delta);
     };
     const handleMouseUp = () => {
       if (isChatResizing.current) {
         isChatResizing.current = false;
-        setIsChatDragging(false);
       }
     };
     window.addEventListener('mousemove', handleMouseMove);
@@ -138,10 +149,44 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     };
   }, [setChatWidth]);
 
-  // Cmd+B / Ctrl+B to toggle navigation sidebar (File Explorer)
+  // File explorer splitter resizing (File explorer is on the right)
+  const isExplorerResizing = useRef(false);
+  const startExplorerX = useRef(0);
+  const startExplorerWidth = useRef(0);
+
+  const handleExplorerResizeMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      isExplorerResizing.current = true;
+      startExplorerX.current = e.clientX;
+      startExplorerWidth.current = explorerWidth;
+      e.preventDefault();
+    },
+    [explorerWidth]
+  );
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isExplorerResizing.current) return;
+      const delta = e.clientX - startExplorerX.current;
+      setExplorerWidth(startExplorerWidth.current - delta);
+    };
+    const handleMouseUp = () => {
+      if (isExplorerResizing.current) {
+        isExplorerResizing.current = false;
+      }
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [setExplorerWidth]);
+
+  // Cmd+B / Ctrl+B to toggle navigation and sessions sidebar (isNavExpanded)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'b') {
         const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
         if (tag === 'input' || tag === 'textarea') return;
         e.preventDefault();
@@ -151,6 +196,24 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isNavExpanded, setIsNavExpanded]);
+
+  // Cmd+Shift+E / Ctrl+Shift+E to toggle file explorer panel (isExplorerVisible)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        (e.key.toLowerCase() === 'e' || e.code === 'KeyE')
+      ) {
+        const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        e.preventDefault();
+        setIsExplorerVisible((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setIsExplorerVisible]);
 
   if (!chatContext) {
     throw new Error('AppLayoutContent must be used within ChatProvider');
@@ -180,6 +243,8 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     isNavExpanded ? i18n.collapseNavigation : i18n.openNavigation
   );
   const editorToggleTitle = intl.formatMessage(i18n.toggleEditor);
+  const explorerShortcut = safeIsMacOS ? '⌘⇧E' : 'Ctrl+Shift+E';
+  const explorerToggleTitle = `${intl.formatMessage(i18n.toggleExplorer)} (${explorerShortcut})`;
 
   return (
     <div className="flex flex-1 w-full h-full relative animate-fade-in bg-background-primary flex-row">
@@ -199,16 +264,28 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         </Button>
 
         {isOnPairRoute && (
-          <Button
-            onClick={() => setIsEditorVisible((v) => !v)}
-            className="no-drag hover:!bg-background-tertiary"
-            variant="ghost"
-            size="xs"
-            title={editorToggleTitle}
-            aria-label={editorToggleTitle}
-          >
-            <Columns2 className="w-4 h-4 text-text-secondary" />
-          </Button>
+          <>
+            <Button
+              onClick={() => setIsEditorVisible((v) => !v)}
+              className="no-drag hover:!bg-background-tertiary"
+              variant="ghost"
+              size="xs"
+              title={editorToggleTitle}
+              aria-label={editorToggleTitle}
+            >
+              <Columns2 className="w-4 h-4 text-text-secondary" />
+            </Button>
+            <Button
+              onClick={() => setIsExplorerVisible((v) => !v)}
+              className="no-drag hover:!bg-background-tertiary"
+              variant="ghost"
+              size="xs"
+              title={explorerToggleTitle}
+              aria-label={explorerToggleTitle}
+            >
+              <FolderTree className="w-4 h-4 text-text-secondary" />
+            </Button>
+          </>
         )}
       </div>
 
@@ -239,28 +316,13 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         {/* Workspace 3-Panel or Standard Route View */}
         {isOnPairRoute ? (
           <div className="flex flex-1 w-full h-full min-h-0 flex-row overflow-hidden">
-            {/* Center Panel: Editor Area */}
-            {isEditorVisible && (
-              <div className="flex-1 h-full min-w-[300px] p-2 pl-0">
-                <EditorArea />
-              </div>
-            )}
-
-            {/* Splitter between Editor and Chat */}
-            {isEditorVisible && (
-              <div
-                className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
-                onMouseDown={handleChatResizeMouseDown}
-                title="Перетащите для изменения ширины"
-              />
-            )}
-
-            {/* Right Panel: Goose Agent Chat */}
+            <Outlet />
+            {/* Left Panel: Goose Agent Chat */}
             <div
-              style={{ width: isEditorVisible ? chatWidth : '100%' }}
+              style={{ width: isEditorVisible || isExplorerVisible ? chatWidth : '100%' }}
               className={cn(
-                'h-full p-2 pl-0 flex flex-col min-w-0',
-                isEditorVisible ? 'flex-shrink-0' : 'flex-1'
+                'h-full p-2 pl-0 flex flex-col min-w-[300px]',
+                isEditorVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1'
               )}
             >
               <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
@@ -271,6 +333,46 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                 />
               </div>
             </div>
+
+            {/* Splitter between Chat and Center */}
+            {(isEditorVisible || isExplorerVisible) && (
+              <div
+                className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
+                onMouseDown={handleChatResizeMouseDown}
+                title="Перетащите для изменения ширины"
+              />
+            )}
+
+            {/* Center Panel: Editor Area */}
+            {isEditorVisible && (
+              <div className="flex-1 h-full min-w-[300px] p-2 pl-0">
+                <EditorArea />
+              </div>
+            )}
+
+            {/* Splitter between Editor and File Explorer */}
+            {isEditorVisible && isExplorerVisible && (
+              <div
+                className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
+                onMouseDown={handleExplorerResizeMouseDown}
+                title="Перетащите для изменения ширины"
+              />
+            )}
+
+            {/* Right Panel: File Explorer */}
+            {isExplorerVisible && (
+              <div
+                style={{ width: isEditorVisible ? explorerWidth : 'auto' }}
+                className={cn(
+                  'h-full p-2 pl-0 flex flex-col min-w-[200px]',
+                  isEditorVisible ? 'flex-shrink-0' : 'flex-1'
+                )}
+              >
+                <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
+                  <FileExplorer />
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex-1 overflow-hidden min-h-0">

@@ -1,4 +1,4 @@
-import { useContext, useEffect } from 'react';
+import { useContext } from 'react';
 import type { ActionRequired } from '../types/message';
 import type { ProposedFileDiff } from '../types/fileSystem';
 import { defineMessages, useIntl } from '../i18n';
@@ -78,14 +78,6 @@ export default function ToolConfirmation({
     toolName.includes('patch') ||
     toolName.includes('text_editor');
   const filePath = (toolArguments?.path as string | undefined) || undefined;
-
-  useEffect(() => {
-    if (isFileTool && filePath && workspace?.proposeDiff && !isClicked) {
-      void workspace.proposeDiff(
-        buildFileDiffProposal({ sessionId, id, generation, filePath, toolArguments })
-      );
-    }
-  }, [isFileTool, filePath, id, generation, sessionId, isClicked, toolArguments, workspace]);
 
   const handleOpenDiffInEditor = () => {
     if (!workspace?.proposeDiff || !filePath) return;

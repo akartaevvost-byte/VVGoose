@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Editor, { DiffEditor, OnMount, DiffOnMount } from '@monaco-editor/react';
-import type * as Monaco from 'monaco-editor';
+import Editor, { DiffEditor, OnMount, DiffOnMount, loader } from '@monaco-editor/react';
+import * as monaco from 'monaco-editor';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
+import type { WorkspaceFolderInfo } from '../../types/fileSystem';
 import { EditorTabs } from './EditorTabs';
 import { EmptyEditorView } from './EmptyEditorView';
 import { getLanguageFromFilename } from './languageDetector';
 import { Save, Check, X, GitCompare } from 'lucide-react';
 import { cn } from '../../utils';
+
+// Configure monaco loader to use local instance from bundle instead of remote CDN
+loader.config({ monaco });
 
 const DIFF_EDITOR_OPTIONS = {
   renderSideBySide: false, // Inline unified diff
@@ -37,7 +41,7 @@ const EDITOR_OPTIONS = {
   padding: { top: 8, bottom: 8 },
 };
 
-const GOOSE_DARK_THEME: Monaco.editor.IStandaloneThemeData = {
+const GOOSE_DARK_THEME: monaco.editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [],
@@ -54,7 +58,31 @@ const GOOSE_DARK_THEME: Monaco.editor.IStandaloneThemeData = {
   },
 };
 
-function relativeToWorkspacePath(filePath: string, workspacePath: string): string {
+export function relativeToWorkspacePath(
+  filePath: string,
+  workspacePath: string,
+  workspaceFolders?: WorkspaceFolderInfo[]
+): string {
+  if (workspaceFolders && workspaceFolders.length > 1) {
+    const sorted = [...workspaceFolders].sort((a, b) => {
+      const aLen = a.path.replace(/[/\\]+$/, '').length;
+      const bLen = b.path.replace(/[/\\]+$/, '').length;
+      return bLen - aLen;
+    });
+
+    for (const folder of sorted) {
+      const root = folder.path.replace(/[/\\]+$/, '');
+      if (filePath === root || filePath === folder.path) {
+        return folder.name;
+      }
+      if (filePath.startsWith(root + '/') || filePath.startsWith(root + '\\')) {
+        const rel = filePath.slice(root.length).replace(/^[/\\]+/, '');
+        return rel ? `[${folder.name}] ${rel}` : folder.name;
+      }
+    }
+    return filePath;
+  }
+
   if (!workspacePath) return filePath;
   const root = workspacePath.replace(/[/\\]+$/, '');
   if (filePath === root) return '';
@@ -70,9 +98,11 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
   const {
     activeFile,
     saveActiveFile,
+    closeFile,
     updateFileContent,
     openFiles,
     workspacePath,
+    workspaceFolders,
     pendingDiff,
     acceptPendingDiff,
     rejectPendingDiff,
@@ -83,15 +113,27 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     col: 1,
   });
 
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const editorRootRef = useRef<HTMLDivElement>(null);
+  const activeFileRef = useRef(activeFile);
+  activeFileRef.current = activeFile;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void saveActiveFile();
+        if (activeFile?.isDirty) {
+          void saveActiveFile();
+        }
         return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
+        const focusInEditor = editorRootRef.current?.contains(document.activeElement) === true;
+        if (focusInEditor && activeFile) {
+          e.preventDefault();
+          closeFile(activeFile.path);
+          return;
+        }
       }
       if (!pendingDiff) return;
       // Accept/reject shortcuts only apply while focus is inside the editor
@@ -113,17 +155,23 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveActiveFile, pendingDiff, acceptPendingDiff, rejectPendingDiff]);
+  }, [saveActiveFile, closeFile, pendingDiff, acceptPendingDiff, rejectPendingDiff, activeFile]);
 
   const handleEditorMount: OnMount = useCallback(
-    (editor, monaco) => {
+    (editor, monacoInstance) => {
       editorRef.current = editor;
 
-      monaco.editor.defineTheme('goose-dark', GOOSE_DARK_THEME);
-      monaco.editor.setTheme('goose-dark');
+      monacoInstance.editor.defineTheme('goose-dark', GOOSE_DARK_THEME);
+      monacoInstance.editor.setTheme('goose-dark');
 
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
         void saveActiveFile();
+      });
+
+      editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyW, () => {
+        if (activeFileRef.current) {
+          closeFile(activeFileRef.current.path);
+        }
       });
 
       editor.onDidChangeCursorPosition((e) => {
@@ -133,7 +181,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
         });
       });
     },
-    [saveActiveFile]
+    [saveActiveFile, closeFile]
   );
 
   const handleDiffEditorMount: DiffOnMount = useCallback(
@@ -161,7 +209,9 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     [acceptPendingDiff, rejectPendingDiff]
   );
 
-  const relativePath = activeFile ? relativeToWorkspacePath(activeFile.path, workspacePath) : '';
+  const relativePath = activeFile
+    ? relativeToWorkspacePath(activeFile.path, workspacePath, workspaceFolders)
+    : '';
 
   const language = activeFile ? getLanguageFromFilename(activeFile.name) : 'plaintext';
 

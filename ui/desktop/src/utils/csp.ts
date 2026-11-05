@@ -110,7 +110,7 @@ export function buildCSP(externalBackend?: ExternalBackendConfig): string {
     "form-action 'none';" +
     "base-uri 'self';" +
     "manifest-src 'self';" +
-    "worker-src 'self';" +
+    "worker-src 'self' blob:;" +
     upgradeDirective
   );
 }

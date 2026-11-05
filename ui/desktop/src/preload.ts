@@ -103,6 +103,11 @@ export interface CreateChatWindowOptions {
   recipeId?: string;
 }
 
+export interface SelectFileOrDirectoryOptions {
+  mode?: 'file' | 'directory' | 'all';
+  extensions?: string[];
+}
+
 // Define the API types in a single place
 type ElectronAPI = {
   platform: string;
@@ -118,7 +123,10 @@ type ElectronAPI = {
   showSaveDialog: (options: SaveDialogOptions) => Promise<SaveDialogResponse>;
   reloadApp: () => void;
   checkForOllama: () => Promise<boolean>;
-  selectFileOrDirectory: (defaultPath?: string) => Promise<string | null>;
+  selectFileOrDirectory: (
+    defaultPath?: string,
+    options?: SelectFileOrDirectoryOptions
+  ) => Promise<string | null>;
   selectImportSessionFile: () => Promise<{
     filePath: string;
     contents: string;
@@ -146,7 +154,7 @@ type ElectronAPI = {
   workspaceRenamePath: (oldPath: string, newPath: string) => Promise<WorkspaceOperationResult>;
   workspaceDeletePath: (targetPath: string) => Promise<WorkspaceOperationResult>;
   workspaceGetGitStatuses: (workspacePath: string) => Promise<Record<string, GitFileStatus>>;
-  workspaceStartWatching: (workspacePath: string) => Promise<void>;
+  workspaceStartWatching: (workspacePath: string | string[]) => Promise<void>;
   workspaceStopWatching: () => Promise<void>;
   getAllowedExtensions: () => Promise<string[] | null>;
   getPathForFile: (file: File) => string;
@@ -237,8 +245,8 @@ const electronAPI: ElectronAPI = {
   reloadApp: () => ipcRenderer.send('reload-app'),
   checkForOllama: () => ipcRenderer.invoke('check-ollama'),
 
-  selectFileOrDirectory: (defaultPath?: string) =>
-    ipcRenderer.invoke('select-file-or-directory', defaultPath),
+  selectFileOrDirectory: (defaultPath?: string, options?: SelectFileOrDirectoryOptions) =>
+    ipcRenderer.invoke('select-file-or-directory', defaultPath, options),
   selectImportSessionFile: () => ipcRenderer.invoke('select-import-session-file'),
   getBinaryPath: (binaryName: string) => ipcRenderer.invoke('get-binary-path', binaryName),
   selectRecipeFile: () => ipcRenderer.invoke('select-recipe-file'),
@@ -265,7 +273,7 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('workspace-delete-path', targetPath),
   workspaceGetGitStatuses: (workspacePath: string) =>
     ipcRenderer.invoke('workspace-get-git-statuses', workspacePath),
-  workspaceStartWatching: (workspacePath: string) =>
+  workspaceStartWatching: (workspacePath: string | string[]) =>
     ipcRenderer.invoke('workspace-start-watching', workspacePath),
   workspaceStopWatching: () => ipcRenderer.invoke('workspace-stop-watching'),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),

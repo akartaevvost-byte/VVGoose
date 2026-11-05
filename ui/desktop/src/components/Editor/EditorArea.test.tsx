@@ -4,7 +4,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EditorArea } from './EditorArea';
+import { EditorArea, relativeToWorkspacePath } from './EditorArea';
 import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
 
 vi.mock('@monaco-editor/react', () => {
@@ -91,7 +91,11 @@ vi.mock('@monaco-editor/react', () => {
     );
   };
 
-  return { default: MockEditor, DiffEditor: MockDiffEditor };
+  return {
+    default: MockEditor,
+    DiffEditor: MockDiffEditor,
+    loader: { config: vi.fn(), init: vi.fn() },
+  };
 });
 
 // Helper component to trigger openFile and proposeDiff
@@ -167,6 +171,22 @@ describe('EditorArea', () => {
             error: null,
           });
         }
+        if (path === '/mock/frontend/src/App.tsx') {
+          return Promise.resolve({
+            found: true,
+            filePath: path,
+            content: 'export const App = () => <div>App</div>;\n',
+            error: null,
+          });
+        }
+        if (path === '/mock/backend/src/index.ts') {
+          return Promise.resolve({
+            found: true,
+            filePath: path,
+            content: 'console.log("backend");\n',
+            error: null,
+          });
+        }
         return Promise.resolve({
           found: false,
           filePath: path,
@@ -179,7 +199,7 @@ describe('EditorArea', () => {
       workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       off: vi.fn(),
-    } as any;
+    } as unknown as typeof window.electron;
   });
 
   it('renders EmptyEditorView when no files are open', () => {
@@ -406,5 +426,155 @@ describe('EditorArea', () => {
       expect(screen.queryByTestId('inline-diff-banner')).toBeNull();
     });
     expect(window.electron.workspaceCreateFile).not.toHaveBeenCalled();
+  });
+
+  it('closes the active tab on Cmd+W when focus is in the editor', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener filesToOpen={[{ path: '/mock/workspace/src/main.rs' }]} />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('open-btn-/mock/workspace/src/main.rs'));
+
+    await waitFor(() => {
+      expect(screen.getByText('main.rs')).toBeDefined();
+    });
+
+    const textarea = screen.getByTestId('monaco-textarea');
+    textarea.focus();
+
+    fireEvent.keyDown(window, { key: 'w', metaKey: true });
+
+    await waitFor(() => {
+      expect(screen.queryByText('main.rs')).toBeNull();
+      expect(screen.getByText('Рабочее пространство Goose')).toBeDefined();
+    });
+  });
+
+  it('displays multi-root folder prefix in status bar and full path in title tooltip', async () => {
+    localStorage.setItem(
+      'goose_workspace_folders',
+      JSON.stringify([
+        { path: '/mock/backend', name: 'backend' },
+        { path: '/mock/frontend', name: 'frontend' },
+      ])
+    );
+    localStorage.setItem('goose_workspace_path', '/mock/backend');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener
+          filesToOpen={[
+            { path: '/mock/frontend/src/App.tsx' },
+            { path: '/mock/backend/src/index.ts' },
+          ]}
+        />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    // Open file from the second workspace folder
+    fireEvent.click(screen.getByTestId('open-btn-/mock/frontend/src/App.tsx'));
+
+    await waitFor(() => {
+      expect(screen.getByText('App.tsx')).toBeDefined();
+    });
+
+    const statusSpan = screen.getByText('[frontend] src/App.tsx');
+    expect(statusSpan.getAttribute('title')).toBe('/mock/frontend/src/App.tsx');
+
+    // Open file from the first workspace folder
+    fireEvent.click(screen.getByTestId('open-btn-/mock/backend/src/index.ts'));
+
+    await waitFor(() => {
+      expect(screen.getByText('index.ts')).toBeDefined();
+    });
+
+    const backendStatusSpan = screen.getByText('[backend] src/index.ts');
+    expect(backendStatusSpan.getAttribute('title')).toBe('/mock/backend/src/index.ts');
+  });
+});
+
+describe('relativeToWorkspacePath', () => {
+  it('handles single-folder workspace relative to workspacePath', () => {
+    expect(relativeToWorkspacePath('/mock/workspace/src/main.rs', '/mock/workspace')).toBe(
+      'src/main.rs'
+    );
+    expect(relativeToWorkspacePath('/mock/workspace', '/mock/workspace')).toBe('');
+    expect(relativeToWorkspacePath('/other/path/file.txt', '/mock/workspace')).toBe(
+      '/other/path/file.txt'
+    );
+    expect(relativeToWorkspacePath('/mock/workspace/file.txt', '')).toBe(
+      '/mock/workspace/file.txt'
+    );
+  });
+
+  it('preserves single-folder behavior when workspaceFolders has 1 folder', () => {
+    const singleFolder = [{ path: '/mock/workspace', name: 'workspace' }];
+    expect(
+      relativeToWorkspacePath('/mock/workspace/src/main.rs', '/mock/workspace', singleFolder)
+    ).toBe('src/main.rs');
+  });
+
+  it('formats paths with [folder.name] for multi-root workspaces', () => {
+    const folders = [
+      { path: '/repo/backend', name: 'backend' },
+      { path: '/repo/frontend', name: 'frontend' },
+    ];
+
+    expect(relativeToWorkspacePath('/repo/backend/src/index.ts', '/repo/backend', folders)).toBe(
+      '[backend] src/index.ts'
+    );
+    expect(relativeToWorkspacePath('/repo/frontend/package.json', '/repo/backend', folders)).toBe(
+      '[frontend] package.json'
+    );
+  });
+
+  it('returns folder.name when path points directly to root of a multi-root folder', () => {
+    const folders = [
+      { path: '/repo/backend', name: 'backend' },
+      { path: '/repo/frontend', name: 'frontend' },
+    ];
+
+    expect(relativeToWorkspacePath('/repo/backend', '/repo/backend', folders)).toBe('backend');
+    expect(relativeToWorkspacePath('/repo/frontend/', '/repo/backend', folders)).toBe('frontend');
+  });
+
+  it('returns full filePath when file is outside any multi-root folder', () => {
+    const folders = [
+      { path: '/repo/backend', name: 'backend' },
+      { path: '/repo/frontend', name: 'frontend' },
+    ];
+
+    expect(relativeToWorkspacePath('/outside/file.txt', '/repo/backend', folders)).toBe(
+      '/outside/file.txt'
+    );
+  });
+
+  it('respects nested folders by matching the most specific root first', () => {
+    const folders = [
+      { path: '/repo', name: 'root' },
+      { path: '/repo/packages/core', name: 'core' },
+    ];
+
+    expect(relativeToWorkspacePath('/repo/packages/core/src/index.ts', '/repo', folders)).toBe(
+      '[core] src/index.ts'
+    );
+    expect(relativeToWorkspacePath('/repo/README.md', '/repo', folders)).toBe('[root] README.md');
+  });
+
+  it('supports Windows backslash paths in multi-root workspaces', () => {
+    const folders = [
+      { path: 'C:\\work\\backend', name: 'backend' },
+      { path: 'C:\\work\\frontend', name: 'frontend' },
+    ];
+
+    expect(
+      relativeToWorkspacePath('C:\\work\\frontend\\src\\App.tsx', 'C:\\work\\backend', folders)
+    ).toBe('[frontend] src\\App.tsx');
   });
 });

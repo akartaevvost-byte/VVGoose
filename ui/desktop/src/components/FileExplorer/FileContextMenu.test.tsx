@@ -13,6 +13,7 @@ describe('FileContextMenu', () => {
     path: '/mock/workspace/crates/goose/src/agent.rs',
     relativePath: 'crates/goose/src/agent.rs',
     isDirectory: false,
+    isIgnored: false,
   };
 
   const mockOnClose = vi.fn();
@@ -141,6 +142,129 @@ describe('FileContextMenu', () => {
     );
 
     fireEvent.keyDown(document, { key: 'Escape' });
+    expect(mockOnClose).toHaveBeenCalled();
+  });
+
+  it('hides "Переименовать..." and "Удалить" when isRoot={true} in single-root workspace', () => {
+    const mockRootNode: WorkspaceFileNode = {
+      name: 'workspace',
+      path: '/mock/workspace',
+      relativePath: '',
+      isDirectory: true,
+      isIgnored: false,
+    };
+
+    render(
+      <FileContextMenu
+        x={100}
+        y={100}
+        node={mockRootNode}
+        isRoot={true}
+        isMultiRoot={false}
+        onClose={mockOnClose}
+        onCreateFile={mockOnCreateFile}
+        onCreateFolder={mockOnCreateFolder}
+        onRename={mockOnRename}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    expect(screen.getByText('Создать файл')).toBeDefined();
+    expect(screen.getByText('Создать папку')).toBeDefined();
+    expect(screen.queryByText('Переименовать...')).toBeNull();
+    expect(screen.queryByText('Удалить')).toBeNull();
+    expect(screen.queryByText('Убрать папку из рабочей области')).toBeNull();
+  });
+
+  it('shows "Убрать папку из рабочей области" and hides "Переименовать..." when isRoot={true} in multi-root workspace', () => {
+    const mockRootNode: WorkspaceFileNode = {
+      name: 'backend',
+      path: '/mock/workspace/backend',
+      relativePath: '',
+      isDirectory: true,
+      isIgnored: false,
+    };
+
+    render(
+      <FileContextMenu
+        x={100}
+        y={100}
+        node={mockRootNode}
+        isRoot={true}
+        isMultiRoot={true}
+        onClose={mockOnClose}
+        onCreateFile={mockOnCreateFile}
+        onCreateFolder={mockOnCreateFolder}
+        onRename={mockOnRename}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    expect(screen.queryByText('Переименовать...')).toBeNull();
+    expect(screen.queryByText('Удалить')).toBeNull();
+    expect(screen.getByText('Убрать папку из рабочей области')).toBeDefined();
+
+    fireEvent.click(screen.getByText('Убрать папку из рабочей области'));
+    expect(mockOnDelete).toHaveBeenCalledWith(mockRootNode);
+    expect(mockOnClose).toHaveBeenCalled();
+  });
+
+  it('detects root node automatically when relativePath is empty and isDirectory is true', () => {
+    const mockAutoRootNode: WorkspaceFileNode = {
+      name: 'workspace',
+      path: '/mock/workspace',
+      relativePath: '',
+      isDirectory: true,
+      isIgnored: false,
+    };
+
+    render(
+      <FileContextMenu
+        x={100}
+        y={100}
+        node={mockAutoRootNode}
+        isMultiRoot={false}
+        onClose={mockOnClose}
+        onCreateFile={mockOnCreateFile}
+        onCreateFolder={mockOnCreateFolder}
+        onRename={mockOnRename}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    expect(screen.queryByText('Переименовать...')).toBeNull();
+    expect(screen.queryByText('Удалить')).toBeNull();
+  });
+
+  it('calls onRemoveFromWorkspace when provided for multi-root root folder', () => {
+    const mockRootNode: WorkspaceFileNode = {
+      name: 'backend',
+      path: '/mock/workspace/backend',
+      relativePath: '',
+      isDirectory: true,
+      isIgnored: false,
+    };
+    const mockOnRemoveFromWorkspace = vi.fn();
+
+    render(
+      <FileContextMenu
+        x={100}
+        y={100}
+        node={mockRootNode}
+        isRoot={true}
+        isMultiRoot={true}
+        onClose={mockOnClose}
+        onCreateFile={mockOnCreateFile}
+        onCreateFolder={mockOnCreateFolder}
+        onRename={mockOnRename}
+        onDelete={mockOnDelete}
+        onRemoveFromWorkspace={mockOnRemoveFromWorkspace}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Убрать папку из рабочей области'));
+    expect(mockOnRemoveFromWorkspace).toHaveBeenCalledWith(mockRootNode);
+    expect(mockOnDelete).not.toHaveBeenCalled();
     expect(mockOnClose).toHaveBeenCalled();
   });
 });

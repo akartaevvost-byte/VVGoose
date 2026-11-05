@@ -119,6 +119,19 @@ describe('workspaceFileService', () => {
       const missingPath = path.join(tempDir, 'does-not-exist.txt');
       const readResult = await readWorkspaceFile(missingPath);
       expect(readResult.found).toBe(false);
+      expect(readResult.isBinary).toBe(false);
+      expect(readResult.content).toBe('');
+    });
+
+    it('detects binary files and refuses to read them as text', async () => {
+      const binPath = path.join(tempDir, 'binary.wasm');
+      const binBuffer = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+      await fs.writeFile(binPath, binBuffer);
+
+      const readResult = await readWorkspaceFile(binPath);
+      expect(readResult.found).toBe(true);
+      expect(readResult.isBinary).toBe(true);
+      expect(readResult.error).toContain('Binary file');
       expect(readResult.content).toBe('');
     });
 
@@ -182,6 +195,24 @@ describe('workspaceFileService', () => {
         expect(workspaceWatcherManager.getWorkspacePath(windowId)).toBeUndefined();
       }).not.toThrow();
     });
+
+    it('supports watching multiple workspace paths', async () => {
+      const windowId = 998;
+      const subDirA = path.join(tempDir, 'subA');
+      const subDirB = path.join(tempDir, 'subB');
+      await fs.mkdir(subDirA, { recursive: true });
+      await fs.mkdir(subDirB, { recursive: true });
+
+      expect(() => {
+        workspaceWatcherManager.startWatching(windowId, [subDirA, subDirB], () => {});
+        expect(workspaceWatcherManager.getWorkspacePaths(windowId)).toEqual([
+          path.resolve(subDirA),
+          path.resolve(subDirB),
+        ]);
+        workspaceWatcherManager.stopWatching(windowId);
+        expect(workspaceWatcherManager.getWorkspacePaths(windowId)).toEqual([]);
+      }).not.toThrow();
+    });
   });
 
   describe('security and path traversal validation', () => {
@@ -194,6 +225,18 @@ describe('workspaceFileService', () => {
     it('assertWithinWorkspace denies traversal attempts outside workspace', () => {
       const outsidePath = path.join(tempDir, '..', 'evil.txt');
       expect(() => assertWithinWorkspace(outsidePath, tempDir)).toThrow(/Access denied/);
+    });
+
+    it('assertWithinWorkspace supports multiple allowed workspace roots', () => {
+      const rootA = path.join(tempDir, 'project-a');
+      const rootB = path.join(tempDir, 'project-b');
+      const fileA = path.join(rootA, 'src', 'main.rs');
+      const fileB = path.join(rootB, 'package.json');
+      const outside = path.join(tempDir, 'other', 'secret.txt');
+
+      expect(assertWithinWorkspace(fileA, [rootA, rootB])).toBe(fileA);
+      expect(assertWithinWorkspace(fileB, [rootA, rootB])).toBe(fileB);
+      expect(() => assertWithinWorkspace(outside, [rootA, rootB])).toThrow(/Access denied/);
     });
 
     it('rejects read/write operations outside workspace when workspaceRoot is specified', async () => {

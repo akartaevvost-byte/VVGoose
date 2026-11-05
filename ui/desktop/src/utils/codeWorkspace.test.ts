@@ -75,4 +75,30 @@ describe('parseCodeWorkspace', () => {
     expect(result).not.toBeNull();
     expect(result?.rootPath).toBe('C:/Users/developer/project/backend');
   });
+
+  it('parses multiple folders in a multi-root workspace', () => {
+    const json = JSON.stringify({
+      folders: [
+        { path: 'services/auth', name: 'Auth Service' },
+        { path: 'services/billing', name: 'Billing Service' },
+        { path: '/external/shared-lib' },
+      ],
+    });
+
+    const result = parseCodeWorkspace(json, '/Users/developer/mono/repo.code-workspace');
+    expect(result).not.toBeNull();
+    expect(result?.folders.length).toBe(3);
+    expect(result?.folders[0]).toEqual({
+      path: '/Users/developer/mono/services/auth',
+      name: 'Auth Service',
+    });
+    expect(result?.folders[1]).toEqual({
+      path: '/Users/developer/mono/services/billing',
+      name: 'Billing Service',
+    });
+    expect(result?.folders[2]).toEqual({
+      path: '/external/shared-lib',
+      name: 'shared-lib',
+    });
+  });
 });

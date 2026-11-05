@@ -70,7 +70,7 @@ describe('useFileDrop', () => {
     expect(preventDefault).toHaveBeenCalled();
   });
 
-  it('ignores dragged selected text and keeps the default drop behaviour', async () => {
+  it('ignores dragged selected text and prevents browser navigation', async () => {
     const { result } = renderHook(() => useFileDrop());
     const { event, preventDefault } = makeDragEvent({ plainText: 'let x = 42' });
 
@@ -79,7 +79,7 @@ describe('useFileDrop', () => {
     });
 
     expect(result.current.droppedFiles).toEqual([]);
-    expect(preventDefault).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalled();
   });
 
   it('ignores relative-looking text that is not an absolute path', async () => {

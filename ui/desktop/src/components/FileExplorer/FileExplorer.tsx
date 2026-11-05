@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
-import type { WorkspaceFileNode } from '../../types/fileSystem';
+import type { WorkspaceFileNode, WorkspaceFolderInfo } from '../../types/fileSystem';
 import { FileContextMenu } from './FileContextMenu';
 import { getFileIcon } from './fileIcons';
 import { cn } from '../../utils';
@@ -32,6 +32,7 @@ function getParentDirPath(p: string): string {
 interface FlatItem {
   node: WorkspaceFileNode;
   level: number;
+  isRoot?: boolean;
 }
 
 function flattenVisibleTree(
@@ -44,9 +45,9 @@ function flattenVisibleTree(
   const result: FlatItem[] = [];
   for (const node of nodes) {
     if (hideIgnored && node.isIgnored) continue;
-    result.push({ node, level });
-    if (node.isDirectory && expandedDirs.has(node.relativePath)) {
-      const children = dirChildren.get(node.relativePath) || [];
+    result.push({ node, level, isRoot: false });
+    if (node.isDirectory && expandedDirs.has(node.path)) {
+      const children = dirChildren.get(node.path) || [];
       if (children.length > 0) {
         result.push(
           ...flattenVisibleTree(children, level + 1, expandedDirs, dirChildren, hideIgnored)
@@ -61,16 +62,18 @@ interface FileTreeNodeItemProps {
   node: WorkspaceFileNode;
   level: number;
   isExpanded: boolean;
-  toggleDir: (relPath: string) => void;
+  isRoot?: boolean;
+  toggleDir: (node: WorkspaceFileNode) => void;
   selectedFile: string | null;
   onSelectFile: (filePath: string) => void;
-  onContextMenu: (e: React.MouseEvent, node: WorkspaceFileNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: WorkspaceFileNode, isRoot?: boolean) => void;
 }
 
 const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
   node,
   level,
   isExpanded,
+  isRoot = false,
   toggleDir,
   selectedFile,
   onSelectFile,
@@ -81,7 +84,7 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (node.isDirectory) {
-      toggleDir(node.relativePath);
+      toggleDir(node);
     } else {
       onSelectFile(node.path);
     }
@@ -90,7 +93,7 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onContextMenu(e, node);
+    onContextMenu(e, node, isRoot);
   };
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -98,7 +101,7 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
     e.dataTransfer.setData('goose/file-path', node.path);
   };
 
-  const paddingLeft = `${level * 14 + 8}px`;
+  const paddingLeft = `${level * 14 + (isRoot ? 4 : 8)}px`;
 
   return (
     <div
@@ -110,6 +113,7 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
       className={cn(
         'flex items-center gap-1.5 py-1 pr-2 text-xs cursor-pointer select-none rounded hover:bg-background-tertiary/70 transition-colors',
         isSelected && 'bg-background-tertiary text-text-primary font-medium',
+        isRoot && 'font-semibold text-text-primary hover:bg-background-tertiary',
         node.isIgnored && 'text-text-muted/60 opacity-60'
       )}
       title={node.path}
@@ -122,11 +126,16 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
         <span className="w-3.5 h-3.5" />
       )}
 
-      {getFileIcon(node.name, node.isDirectory, isExpanded)}
+      {isRoot ? (
+        <Folder className="w-4 h-4 text-goose-teal flex-shrink-0" />
+      ) : (
+        getFileIcon(node.name, node.isDirectory, isExpanded)
+      )}
 
       <span
         className={cn(
           'truncate flex-1',
+          isRoot && 'text-xs font-semibold text-text-primary',
           node.gitStatus === 'modified' && 'text-amber-300',
           node.gitStatus === 'untracked' && 'text-emerald-400'
         )}
@@ -147,17 +156,48 @@ const FileTreeNodeItem: React.FC<FileTreeNodeItemProps> = ({
 export const FileExplorer: React.FC = () => {
   const {
     workspacePath,
+    workspaceFolders,
+    setWorkspaceFolders,
     selectedFile,
     setSelectedFile,
     openFolderDialog,
+    openWorkspaceFileDialog,
     refreshTrigger,
     refreshWorkspace,
     openFile,
     closeFile,
+    openFiles,
   } = useWorkspace();
 
-  const [rootNodes, setRootNodes] = useState<WorkspaceFileNode[]>([]);
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const effectiveFolders = useMemo<WorkspaceFolderInfo[]>(() => {
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      return workspaceFolders;
+    }
+    if (workspacePath) {
+      const name = workspacePath.split(/[/\\]/).filter(Boolean).pop() || workspacePath;
+      return [{ path: workspacePath, name }];
+    }
+    return [];
+  }, [workspaceFolders, workspacePath]);
+
+  const effectiveFoldersRef = useRef<WorkspaceFolderInfo[]>(effectiveFolders);
+  effectiveFoldersRef.current = effectiveFolders;
+
+  const isRootNode = useCallback(
+    (node: WorkspaceFileNode): boolean => {
+      if (node.isDirectory && node.relativePath === '') {
+        return true;
+      }
+      return effectiveFolders.some((f) => f.path === node.path);
+    },
+    [effectiveFolders]
+  );
+
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    effectiveFolders.forEach((f) => initial.add(f.path));
+    return initial;
+  });
   const expandedDirsRef = useRef<Set<string>>(expandedDirs);
   expandedDirsRef.current = expandedDirs;
 
@@ -165,16 +205,20 @@ export const FileExplorer: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hideIgnored, setHideIgnored] = useState<boolean>(false);
 
+  // Map to find which folder root and relative path a directory node belongs to
+  const nodeLookupRef = useRef<Map<string, { folderRoot: string; relPath: string }>>(new Map());
+
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     node: WorkspaceFileNode;
+    isRoot?: boolean;
   } | null>(null);
 
   // Action Dialog State
   const [actionModal, setActionModal] = useState<{
-    type: 'create-file' | 'create-folder' | 'rename' | 'delete';
+    type: 'create-file' | 'create-folder' | 'rename' | 'delete' | 'remove-folder';
     targetPath: string;
     targetNode?: WorkspaceFileNode;
     title: string;
@@ -182,26 +226,39 @@ export const FileExplorer: React.FC = () => {
     confirmOverwrite?: boolean;
   } | null>(null);
 
+  // Ensure all roots are expanded by default when workspace folders change
+  useEffect(() => {
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      effectiveFolders.forEach((f) => {
+        if (!prev.has(f.path)) {
+          next.add(f.path);
+        }
+      });
+      return next;
+    });
+  }, [effectiveFolders]);
+
   // Load directory contents
   const loadDirectory = useCallback(
-    async (relPath = '') => {
-      if (!workspacePath || !window.electron?.workspaceReadDirectory) {
-        setRootNodes([]);
+    async (folderRoot: string, relPath = '', fullDirPath = folderRoot) => {
+      if (!window.electron?.workspaceReadDirectory) {
         return;
       }
 
       setIsLoading(true);
       try {
-        const nodes = await window.electron.workspaceReadDirectory(workspacePath, relPath);
-        if (!relPath) {
-          setRootNodes(nodes);
-        } else {
-          setDirChildren((prev) => {
-            const next = new Map(prev);
-            next.set(relPath, nodes);
-            return next;
-          });
-        }
+        const nodes = await window.electron.workspaceReadDirectory(folderRoot, relPath);
+        nodes.forEach((n) => {
+          if (n.isDirectory) {
+            nodeLookupRef.current.set(n.path, { folderRoot, relPath: n.relativePath });
+          }
+        });
+        setDirChildren((prev) => {
+          const next = new Map(prev);
+          next.set(fullDirPath, nodes);
+          return next;
+        });
       } catch (err) {
         toastError({
           title: 'Ошибка чтения каталога',
@@ -211,44 +268,66 @@ export const FileExplorer: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [workspacePath]
+    []
   );
 
-  // Single effect: refresh root and all currently expanded directories on workspace or refresh trigger
+  // Refresh root folders and all currently expanded directories
   useEffect(() => {
-    loadDirectory('');
-    expandedDirsRef.current.forEach((dir) => {
-      loadDirectory(dir);
+    effectiveFolders.forEach((folder) => {
+      void loadDirectory(folder.path, '', folder.path);
     });
-  }, [loadDirectory, refreshTrigger]);
+
+    expandedDirsRef.current.forEach((dirPath) => {
+      const lookup = nodeLookupRef.current.get(dirPath);
+      if (lookup) {
+        void loadDirectory(lookup.folderRoot, lookup.relPath, dirPath);
+      }
+    });
+  }, [effectiveFolders, loadDirectory, refreshTrigger]);
 
   const toggleDir = useCallback(
-    (relPath: string) => {
-      // State updaters must stay pure (StrictMode runs them twice), so the
-      // directory is loaded outside the updater
-      if (expandedDirsRef.current.has(relPath)) {
+    (node: WorkspaceFileNode) => {
+      if (expandedDirsRef.current.has(node.path)) {
         setExpandedDirs((prev) => {
           const next = new Set(prev);
-          next.delete(relPath);
+          next.delete(node.path);
           return next;
         });
       } else {
         setExpandedDirs((prev) => {
           const next = new Set(prev);
-          next.add(relPath);
+          next.add(node.path);
           return next;
         });
-        loadDirectory(relPath);
+
+        // If it's a top-level root folder
+        const rootFolder = effectiveFoldersRef.current.find((f) => f.path === node.path);
+        if (rootFolder) {
+          void loadDirectory(rootFolder.path, '', rootFolder.path);
+        } else {
+          const lookup = nodeLookupRef.current.get(node.path);
+          if (lookup) {
+            void loadDirectory(lookup.folderRoot, lookup.relPath, node.path);
+          } else {
+            const folder = effectiveFoldersRef.current.find(
+              (f) => node.path.startsWith(f.path + '/') || node.path.startsWith(f.path + '\\')
+            );
+            if (folder) {
+              void loadDirectory(folder.path, node.relativePath, node.path);
+            }
+          }
+        }
       }
     },
     [loadDirectory]
   );
 
-  const handleContextMenu = (e: React.MouseEvent, node: WorkspaceFileNode) => {
+  const handleContextMenu = (e: React.MouseEvent, node: WorkspaceFileNode, isRoot?: boolean) => {
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
       node,
+      isRoot: Boolean(isRoot || isRootNode(node)),
     });
   };
 
@@ -271,6 +350,9 @@ export const FileExplorer: React.FC = () => {
   };
 
   const handleRename = (node: WorkspaceFileNode) => {
+    if (isRootNode(node)) {
+      return;
+    }
     setActionModal({
       type: 'rename',
       targetPath: node.path,
@@ -281,6 +363,19 @@ export const FileExplorer: React.FC = () => {
   };
 
   const handleDelete = (node: WorkspaceFileNode) => {
+    if (isRootNode(node)) {
+      if (effectiveFolders.length > 1) {
+        setActionModal({
+          type: 'remove-folder',
+          targetPath: node.path,
+          targetNode: node,
+          title: `Убрать папку «${node.name}» из рабочей области?`,
+          inputValue: '',
+        });
+      }
+      return;
+    }
+
     setActionModal({
       type: 'delete',
       targetPath: node.path,
@@ -337,6 +432,9 @@ export const FileExplorer: React.FC = () => {
           });
         }
       } else if (type === 'rename' && targetNode && inputValue.trim()) {
+        if (isRootNode(targetNode)) {
+          return;
+        }
         const parentDir = getParentDirPath(targetPath);
         const newPath = joinPaths(parentDir, inputValue.trim());
         const res = await window.electron.workspaceRenamePath(targetPath, newPath);
@@ -349,7 +447,30 @@ export const FileExplorer: React.FC = () => {
           closeFile(targetPath);
           void openFile(newPath);
         }
+      } else if (type === 'remove-folder') {
+        const remainingFolders = effectiveFolders.filter((f) => f.path !== targetPath);
+        setWorkspaceFolders(remainingFolders);
+        openFiles?.forEach((file) => {
+          if (
+            file.path === targetPath ||
+            file.path.startsWith(targetPath + '/') ||
+            file.path.startsWith(targetPath + '\\')
+          ) {
+            closeFile(file.path);
+          }
+        });
       } else if (type === 'delete') {
+        const isRootTarget = targetNode
+          ? isRootNode(targetNode)
+          : effectiveFolders.some((f) => f.path === targetPath);
+        if (isRootTarget) {
+          if (effectiveFolders.length > 1) {
+            const remainingFolders = effectiveFolders.filter((f) => f.path !== targetPath);
+            setWorkspaceFolders(remainingFolders);
+          }
+          return;
+        }
+
         const res = await window.electron.workspaceDeletePath(targetPath);
         if (res && !res.success) {
           toastError({
@@ -373,12 +494,32 @@ export const FileExplorer: React.FC = () => {
     }
   };
 
-  const flatItems = useMemo(
-    () => flattenVisibleTree(rootNodes, 0, expandedDirs, dirChildren, hideIgnored),
-    [rootNodes, expandedDirs, dirChildren, hideIgnored]
-  );
+  const flatItems = useMemo<FlatItem[]>(() => {
+    const items: FlatItem[] = [];
+    for (const folder of effectiveFolders) {
+      const rootNode: WorkspaceFileNode = {
+        name: folder.name,
+        path: folder.path,
+        relativePath: '',
+        isDirectory: true,
+        isIgnored: false,
+      };
+      items.push({ node: rootNode, level: 0, isRoot: true });
+      if (expandedDirs.has(folder.path)) {
+        const children = dirChildren.get(folder.path) || [];
+        items.push(...flattenVisibleTree(children, 1, expandedDirs, dirChildren, hideIgnored));
+      }
+    }
+    return items;
+  }, [effectiveFolders, expandedDirs, dirChildren, hideIgnored]);
 
-  const workspaceName = workspacePath ? workspacePath.split(/[/\\]/).filter(Boolean).pop() : null;
+  const workspaceTitle = useMemo(() => {
+    if (effectiveFolders.length === 0) return 'Рабочее пространство';
+    if (effectiveFolders.length === 1) return effectiveFolders[0].name;
+    return `${effectiveFolders.length} папок`;
+  }, [effectiveFolders]);
+
+  const primaryRootPath = effectiveFolders[0]?.path || '';
 
   return (
     <div className="flex flex-col h-full overflow-hidden select-none relative">
@@ -386,16 +527,19 @@ export const FileExplorer: React.FC = () => {
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-primary bg-background-secondary/50">
         <div className="flex items-center gap-1.5 truncate">
           <Folder className="w-4 h-4 text-goose-teal flex-shrink-0" />
-          <span className="text-xs font-semibold text-text-primary truncate" title={workspacePath}>
-            {workspaceName || 'Рабочее пространство'}
+          <span
+            className="text-xs font-semibold text-text-primary truncate"
+            title={primaryRootPath}
+          >
+            {workspaceTitle}
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {workspacePath && (
+          {primaryRootPath && (
             <>
               <button
                 type="button"
-                onClick={() => handleCreateFile(workspacePath)}
+                onClick={() => handleCreateFile(primaryRootPath)}
                 className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
                 title="Создать файл в корне проекта"
               >
@@ -403,7 +547,7 @@ export const FileExplorer: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleCreateFolder(workspacePath)}
+                onClick={() => handleCreateFolder(primaryRootPath)}
                 className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
                 title="Создать папку в корне проекта"
               >
@@ -433,25 +577,41 @@ export const FileExplorer: React.FC = () => {
           <button
             onClick={openFolderDialog}
             className="text-[11px] px-2 py-0.5 bg-background-tertiary hover:bg-border-primary border border-border-primary rounded text-text-primary transition-colors"
+            title="Открыть папку"
           >
             Папка...
+          </button>
+          <button
+            onClick={openWorkspaceFileDialog}
+            className="text-[11px] px-2 py-0.5 bg-background-tertiary hover:bg-border-primary border border-border-primary rounded text-text-primary transition-colors"
+            title="Открыть файл .code-workspace"
+          >
+            Workspace...
           </button>
         </div>
       </div>
 
       {/* File Tree List */}
       <div className="flex-1 overflow-y-auto px-1 py-1.5 min-h-0">
-        {!workspacePath ? (
-          <div className="flex flex-col items-center justify-center p-4 text-center h-full">
-            <p className="text-xs text-text-muted mb-2.5">Папка проекта не открыта</p>
-            <button
-              onClick={openFolderDialog}
-              className="text-xs px-3 py-1.5 bg-goose-teal text-white rounded font-medium hover:opacity-90 transition-opacity"
-            >
-              Открыть папку...
-            </button>
+        {effectiveFolders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-4 text-center h-full gap-3">
+            <p className="text-xs text-text-muted">Папка проекта не открыта</p>
+            <div className="flex flex-col gap-2 w-full max-w-[200px]">
+              <button
+                onClick={openFolderDialog}
+                className="text-xs px-3 py-1.5 bg-goose-teal text-white rounded font-medium hover:opacity-90 transition-opacity"
+              >
+                Открыть папку...
+              </button>
+              <button
+                onClick={openWorkspaceFileDialog}
+                className="text-xs px-3 py-1.5 bg-background-tertiary hover:bg-border-primary border border-border-primary rounded text-text-primary transition-colors font-medium"
+              >
+                Открыть .code-workspace...
+              </button>
+            </div>
           </div>
-        ) : rootNodes.length === 0 ? (
+        ) : flatItems.length === 0 ? (
           <div className="p-3 text-xs text-text-muted text-center italic">
             {isLoading ? 'Загрузка файлов…' : 'В каталоге нет файлов'}
           </div>
@@ -463,9 +623,9 @@ export const FileExplorer: React.FC = () => {
             itemContent={(index) => {
               const item = flatItems[index];
               if (!item) return null;
-              const isExpanded = expandedDirs.has(item.node.relativePath);
-              const children = dirChildren.get(item.node.relativePath) || [];
-              const isEmptyDir = item.node.isDirectory && isExpanded && children.length === 0;
+              const isExpanded = expandedDirs.has(item.node.path);
+              const children = dirChildren.get(item.node.path) || [];
+              const isEmptyDir = item.node.isDirectory && isExpanded && children.length === 0 && !isLoading;
 
               return (
                 <div key={item.node.path}>
@@ -473,6 +633,7 @@ export const FileExplorer: React.FC = () => {
                     node={item.node}
                     level={item.level}
                     isExpanded={isExpanded}
+                    isRoot={item.isRoot}
                     toggleDir={toggleDir}
                     selectedFile={selectedFile}
                     onSelectFile={handleSelectFile}
@@ -499,6 +660,8 @@ export const FileExplorer: React.FC = () => {
           x={contextMenu.x}
           y={contextMenu.y}
           node={contextMenu.node}
+          isRoot={Boolean(contextMenu.isRoot)}
+          isMultiRoot={effectiveFolders.length > 1}
           onClose={() => setContextMenu(null)}
           onCreateFile={handleCreateFile}
           onCreateFolder={handleCreateFolder}
@@ -512,7 +675,11 @@ export const FileExplorer: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-background-secondary border border-border-primary rounded-xl p-4 w-80 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <h3 className="text-sm font-semibold text-text-primary mb-3">{actionModal.title}</h3>
-            {actionModal.type === 'delete' ? (
+            {actionModal.type === 'remove-folder' ? (
+              <p className="text-xs text-text-secondary mb-4">
+                Папка будет убрана из рабочей области. Файлы на диске останутся без изменений.
+              </p>
+            ) : actionModal.type === 'delete' ? (
               <p className="text-xs text-text-secondary mb-4">
                 Это действие безвозвратно удалит выбранный элемент с диска.
               </p>
@@ -553,11 +720,13 @@ export const FileExplorer: React.FC = () => {
                     : 'bg-goose-teal hover:opacity-90'
                 )}
               >
-                {actionModal.type === 'delete'
-                  ? 'Удалить'
-                  : actionModal.confirmOverwrite
-                    ? 'Перезаписать'
-                    : 'Сохранить'}
+                {actionModal.type === 'remove-folder'
+                  ? 'Убрать'
+                  : actionModal.type === 'delete'
+                    ? 'Удалить'
+                    : actionModal.confirmOverwrite
+                      ? 'Перезаписать'
+                      : 'Сохранить'}
               </button>
             </div>
           </div>

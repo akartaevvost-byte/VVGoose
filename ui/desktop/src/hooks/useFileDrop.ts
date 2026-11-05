@@ -129,14 +129,12 @@ export const useFileDrop = () => {
       return;
     }
 
+    e.preventDefault();
     const draggedPath =
       e.dataTransfer.getData('goose/file-path') || e.dataTransfer.getData('text/plain');
     if (!draggedPath || !ABSOLUTE_PATH_PATTERN.test(draggedPath)) {
-      // Not a file path (e.g. selected text): leave the browser's default
-      // drop behaviour intact instead of swallowing it
       return;
     }
-    e.preventDefault();
     const name = draggedPath.split(/[/\\]/).filter(Boolean).pop() || draggedPath;
     setDroppedFiles((prev) => {
       if (prev.some((f) => f.path === draggedPath)) return prev;

@@ -19,8 +19,10 @@ export const EditorTabs: React.FC = () => {
   };
 
   const handleTabAuxClick = (e: React.MouseEvent, filePath: string) => {
+    // Middle click to close tab
     if (e.button === 1) {
       e.preventDefault();
+      e.stopPropagation();
       closeFile(filePath);
     }
   };
@@ -63,15 +65,21 @@ export const EditorTabs: React.FC = () => {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  e.preventDefault();
                   closeFile(tab.path);
                 }}
                 className={cn(
-                  'p-0.5 rounded hover:bg-background-primary/60 text-text-muted hover:text-text-primary transition-colors',
-                  tab.isDirty ? 'hidden group-hover:flex' : 'opacity-0 group-hover:opacity-100'
+                  'flex items-center justify-center w-4 h-4 rounded hover:bg-background-primary/80 text-text-muted hover:text-text-primary transition-all cursor-pointer',
+                  tab.isDirty
+                    ? 'hidden group-hover:flex'
+                    : isActive
+                      ? 'flex opacity-75 hover:opacity-100'
+                      : 'hidden group-hover:flex opacity-60 hover:opacity-100'
                 )}
                 title="Закрыть вкладку"
+                aria-label={`Закрыть ${tab.name}`}
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

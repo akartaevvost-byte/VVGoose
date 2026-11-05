@@ -8,12 +8,12 @@ export interface WorkspaceFileNode {
   size?: number;
   modifiedTime?: number;
   gitStatus?: GitFileStatus;
-  isIgnored?: boolean;
+  isIgnored: boolean;
   children?: WorkspaceFileNode[];
 }
 
 export interface WorkspaceFileTreeOptions {
-  includeIgnored?: boolean;
+  includeIgnored: boolean;
 }
 
 export interface WorkspaceOperationResult<T = void> {
@@ -27,6 +27,7 @@ export interface WorkspaceFileContentResult {
   filePath: string;
   error: string | null;
   found: boolean;
+  isBinary: boolean;
 }
 
 export interface OpenFileTab {
@@ -53,10 +54,16 @@ export interface ProposedFileDiff {
   };
 }
 
+export interface WorkspaceFolderInfo {
+  path: string;
+  name: string;
+}
+
 export interface RecentWorkspace {
   path: string;
   name: string;
   lastOpened: number;
-  isWorkspaceFile?: boolean;
+  isWorkspaceFile: boolean;
   workspaceFilePath?: string;
+  folders?: WorkspaceFolderInfo[];
 }

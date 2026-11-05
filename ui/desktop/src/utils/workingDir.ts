@@ -1,13 +1,4 @@
 export const getInitialWorkingDir = (): string => {
-  try {
-    const ws = localStorage.getItem('goose_workspace_path');
-    if (ws && ws.trim()) {
-      return ws.trim();
-    }
-  } catch {
-    // Ignore storage errors
-  }
-  // Fall back to initial config from app startup
   return (window.appConfig?.get('GOOSE_WORKING_DIR') as string) ?? '';
 };
 

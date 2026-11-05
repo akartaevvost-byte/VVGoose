@@ -964,8 +964,15 @@ const appWindows = new Map<string, BrowserWindow>();
 const windowWorkspaces = new Map<number, string>();
 const desktopFileAccess = new DesktopFileAccess();
 
-function getWorkspaceRootForSender(senderId: number): string | undefined {
-  return windowWorkspaces.get(senderId) || workspaceWatcherManager.getWorkspacePath(senderId);
+function getWorkspaceRootsForSender(senderId: number): string[] {
+  const roots: string[] = [];
+  const windowRoot = windowWorkspaces.get(senderId);
+  if (windowRoot) roots.push(windowRoot);
+  const watcherRoots = workspaceWatcherManager.getWorkspacePaths(senderId);
+  for (const r of watcherRoots) {
+    if (!roots.includes(r)) roots.push(r);
+  }
+  return roots;
 }
 
 function requireRegularRendererWindow(event: IpcMainInvokeEvent): BrowserWindow {
@@ -1405,6 +1412,21 @@ const createChat = async (
     void openExternalUrl(url, mainWindow, getConfiguredGooseLocale()).catch((error) => {
       log.error('Failed to open external URL:', error);
     });
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const appBase = new URL(getAppUrl());
+      const target = new URL(navigationUrl);
+      if (target.origin !== appBase.origin) {
+        event.preventDefault();
+        void openExternalUrl(navigationUrl, mainWindow, getConfiguredGooseLocale()).catch((error) => {
+          log.error('Failed to open external URL from navigation:', error);
+        });
+      }
+    } catch {
+      event.preventDefault();
+    }
   });
 
   const windowId = mainWindow.id;
@@ -2181,10 +2203,34 @@ ipcMain.handle('get-is-fullscreen', (event) => {
 });
 
 // Add file/directory selection handler
-ipcMain.handle('select-file-or-directory', async (_event, defaultPath?: string) => {
-  const dialogOptions: OpenDialogOptions = {
-    properties: ['openFile', 'openDirectory'],
-  };
+ipcMain.handle(
+  'select-file-or-directory',
+  async (
+    _event,
+    defaultPath?: string,
+    options?: { mode?: 'file' | 'directory' | 'all'; extensions?: string[] }
+  ) => {
+    let properties: OpenDialogOptions['properties'];
+    if (options?.mode === 'file') {
+      properties = ['openFile'];
+    } else if (options?.mode === 'directory') {
+      properties = ['openDirectory'];
+    } else {
+      properties = ['openFile', 'openDirectory'];
+    }
+
+    const dialogOptions: OpenDialogOptions = {
+      properties,
+    };
+
+    if (options?.extensions && options.extensions.length > 0) {
+      dialogOptions.filters = [
+        {
+          name: 'Workspace Files',
+          extensions: options.extensions.map((ext) => ext.replace(/^\./, '')),
+        },
+      ];
+    }
 
   // Set default path if provided
   if (defaultPath) {
@@ -2377,42 +2423,44 @@ ipcMain.handle('list-files', async (_event, dirPath, extension) => {
 });
 
 ipcMain.handle('workspace-read-directory', async (event, workspaceRoot, relativeDir, options) => {
-  const root = getWorkspaceRootForSender(event.sender.id) || workspaceRoot;
+  const roots = getWorkspaceRootsForSender(event.sender.id);
+  const root = roots.includes(workspaceRoot) ? workspaceRoot : roots[0] || workspaceRoot;
   return readWorkspaceDirectory(root, relativeDir, options);
 });
 
 ipcMain.handle('workspace-read-file', async (event, filePath) => {
-  const root = getWorkspaceRootForSender(event.sender.id);
-  return readWorkspaceFile(filePath, root);
+  const isCodeWorkspace = typeof filePath === 'string' && filePath.endsWith('.code-workspace');
+  const roots = getWorkspaceRootsForSender(event.sender.id);
+  return readWorkspaceFile(filePath, isCodeWorkspace ? undefined : roots);
 });
 
 ipcMain.handle('workspace-create-file', async (event, filePath, content, overwrite) => {
-  const root = getWorkspaceRootForSender(event.sender.id);
-  return createWorkspaceFile(filePath, content, root, overwrite);
+  const roots = getWorkspaceRootsForSender(event.sender.id);
+  return createWorkspaceFile(filePath, content, roots, overwrite);
 });
 
 ipcMain.handle('workspace-create-directory', async (event, dirPath) => {
-  const root = getWorkspaceRootForSender(event.sender.id);
-  return createWorkspaceDirectory(dirPath, root);
+  const roots = getWorkspaceRootsForSender(event.sender.id);
+  return createWorkspaceDirectory(dirPath, roots);
 });
 
 ipcMain.handle('workspace-rename-path', async (event, oldPath, newPath) => {
-  const root = getWorkspaceRootForSender(event.sender.id);
-  return renameWorkspacePath(oldPath, newPath, root);
+  const roots = getWorkspaceRootsForSender(event.sender.id);
+  return renameWorkspacePath(oldPath, newPath, roots);
 });
 
 ipcMain.handle('workspace-delete-path', async (event, targetPath) => {
-  const root = getWorkspaceRootForSender(event.sender.id);
-  return deleteWorkspacePath(targetPath, root);
+  const roots = getWorkspaceRootsForSender(event.sender.id);
+  return deleteWorkspacePath(targetPath, roots);
 });
 
 ipcMain.handle('workspace-get-git-statuses', async (event, workspacePath) => {
-  const root = getWorkspaceRootForSender(event.sender.id) || workspacePath;
+  const roots = getWorkspaceRootsForSender(event.sender.id);
+  const root = roots.includes(workspacePath) ? workspacePath : roots[0] || workspacePath;
   return getWorkspaceGitStatuses(root);
 });
 
 ipcMain.handle('workspace-start-watching', async (event, workspacePath) => {
-  windowWorkspaces.set(event.sender.id, path.resolve(expandTilde(workspacePath)));
   workspaceWatcherManager.startWatching(event.sender.id, workspacePath, (changedRoot) => {
     if (!event.sender.isDestroyed()) {
       event.sender.send('workspace-files-changed', { rootPath: changedRoot });

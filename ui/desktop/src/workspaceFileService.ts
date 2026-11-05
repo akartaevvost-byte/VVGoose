@@ -18,11 +18,25 @@ const execFileAsync = promisify(execFile);
  * Validates that a target path resides within the specified workspace root.
  * Throws an Error if a path traversal attempt is detected.
  */
-export function assertWithinWorkspace(filePath: string, workspaceRoot: string): string {
+export function assertWithinWorkspace(
+  filePath: string,
+  workspaceRoot: string | string[]
+): string {
   const resolved = path.resolve(expandTilde(filePath));
-  const root = path.resolve(expandTilde(workspaceRoot));
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-    throw new Error(`Access denied: ${resolved} is outside workspace ${root}`);
+  const roots = (Array.isArray(workspaceRoot) ? workspaceRoot : [workspaceRoot])
+    .filter(Boolean)
+    .map((r) => path.resolve(expandTilde(r)));
+
+  if (roots.length === 0) {
+    return resolved;
+  }
+
+  const isWithin = roots.some(
+    (root) => resolved === root || resolved.startsWith(root + path.sep)
+  );
+
+  if (!isWithin) {
+    throw new Error(`Access denied: ${resolved} is outside workspace ${roots.join(', ')}`);
   }
   return resolved;
 }
@@ -35,12 +49,25 @@ interface GitStatusCacheEntry {
 const gitStatusCache = new Map<string, GitStatusCacheEntry>();
 const GIT_STATUS_CACHE_TTL_MS = 2000;
 
-export function invalidateGitStatusCache(workspacePath?: string): void {
+export function invalidateGitStatusCache(workspacePath?: string | string[]): void {
   if (workspacePath) {
-    gitStatusCache.delete(path.resolve(expandTilde(workspacePath)));
+    const roots = Array.isArray(workspacePath) ? workspacePath : [workspacePath];
+    for (const r of roots) {
+      if (r) gitStatusCache.delete(path.resolve(expandTilde(r)));
+    }
   } else {
     gitStatusCache.clear();
   }
+}
+
+function isBinaryBuffer(buffer: Buffer): boolean {
+  const length = Math.min(buffer.length, 8000);
+  for (let i = 0; i < length; i++) {
+    if (buffer[i] === 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -60,11 +87,11 @@ export async function getWorkspaceGitStatuses(
   try {
     const { stdout } = await execFileAsync(
       'git',
-      ['status', '--porcelain=v1', '-u', '--ignored=matching'],
+      ['status', '--porcelain=v1', '-unormal', '--ignored=traditional'],
       {
         cwd: expandedPath,
         encoding: 'utf8',
-        maxBuffer: 10 * 1024 * 1024,
+        maxBuffer: 25 * 1024 * 1024,
       }
     );
 
@@ -111,7 +138,8 @@ export async function getWorkspaceGitStatuses(
 
     gitStatusCache.set(expandedPath, { timestamp: Date.now(), statuses: statusMap });
     return statusMap;
-  } catch {
+  } catch (error) {
+    console.error('Failed to get git statuses:', error);
     // If Git is not installed or the directory is not a Git repo, return empty map
     return {};
   }
@@ -150,6 +178,18 @@ export async function readWorkspaceDirectory(
 
       // Check Git status for this file/directory
       let gitStatus = gitStatuses[posixRelativePath];
+      if (!gitStatus) {
+        const segments = posixRelativePath.split('/');
+        let cur = '';
+        for (let i = 0; i < segments.length - 1; i++) {
+          cur = cur ? `${cur}/${segments[i]}` : segments[i];
+          if (gitStatuses[cur] === 'ignored') {
+            gitStatus = 'ignored';
+            break;
+          }
+        }
+      }
+
       if (!gitStatus && isDirectory) {
         // Check if any tracked/modified files exist under this directory
         const prefix = `${posixRelativePath}/`;
@@ -164,7 +204,7 @@ export async function readWorkspaceDirectory(
       const isIgnored = gitStatus === 'ignored';
 
       // Skip ignored files if option is not set
-      if (isIgnored && options?.includeIgnored === false) {
+      if (isIgnored && !options?.includeIgnored) {
         continue;
       }
 
@@ -208,7 +248,7 @@ export async function readWorkspaceDirectory(
  */
 export async function readWorkspaceFile(
   filePath: string,
-  workspaceRoot?: string
+  workspaceRoot?: string | string[]
 ): Promise<WorkspaceFileContentResult> {
   let expandedPath = expandTilde(filePath);
   try {
@@ -225,6 +265,7 @@ export async function readWorkspaceFile(
         filePath: expandedPath,
         error: 'Path is not a regular file',
         found: false,
+        isBinary: false,
       };
     }
 
@@ -236,15 +277,28 @@ export async function readWorkspaceFile(
         filePath: expandedPath,
         error: 'File exceeds maximum supported size (10MB)',
         found: true,
+        isBinary: false,
       };
     }
 
-    const fileContent = await fs.readFile(expandedPath, 'utf8');
+    const buffer = await fs.readFile(expandedPath);
+    if (isBinaryBuffer(buffer)) {
+      return {
+        content: '',
+        filePath: expandedPath,
+        error: 'Binary file cannot be opened in text editor',
+        found: true,
+        isBinary: true,
+      };
+    }
+
+    const fileContent = buffer.toString('utf8');
     return {
       content: fileContent,
       filePath: expandedPath,
       error: null,
       found: true,
+      isBinary: false,
     };
   } catch (error) {
     const isEnoent =
@@ -258,6 +312,7 @@ export async function readWorkspaceFile(
       filePath: expandedPath,
       error: isEnoent ? null : error instanceof Error ? error.message : 'Failed to read file',
       found: false,
+      isBinary: false,
     };
   }
 }
@@ -269,7 +324,7 @@ export async function readWorkspaceFile(
 export async function createWorkspaceFile(
   filePath: string,
   content = '',
-  workspaceRoot?: string,
+  workspaceRoot?: string | string[],
   overwrite = false
 ): Promise<WorkspaceOperationResult> {
   try {
@@ -310,7 +365,7 @@ export async function createWorkspaceFile(
  */
 export async function createWorkspaceDirectory(
   dirPath: string,
-  workspaceRoot?: string
+  workspaceRoot?: string | string[]
 ): Promise<WorkspaceOperationResult> {
   try {
     let expandedPath = expandTilde(dirPath);
@@ -337,7 +392,7 @@ export async function createWorkspaceDirectory(
 export async function renameWorkspacePath(
   oldPath: string,
   newPath: string,
-  workspaceRoot?: string
+  workspaceRoot?: string | string[]
 ): Promise<WorkspaceOperationResult> {
   try {
     let expandedOld = expandTilde(oldPath);
@@ -366,7 +421,7 @@ export async function renameWorkspacePath(
  */
 export async function deleteWorkspacePath(
   targetPath: string,
-  workspaceRoot?: string
+  workspaceRoot?: string | string[]
 ): Promise<WorkspaceOperationResult> {
   try {
     let expandedPath = expandTilde(targetPath);
@@ -394,9 +449,9 @@ export class WorkspaceWatcherManager {
   private readonly watchers = new Map<
     number,
     {
-      watcher: FSWatcher;
+      watchers: FSWatcher[];
       debounceTimer: ReturnType<typeof setTimeout> | null;
-      workspacePath: string;
+      workspacePaths: string[];
     }
   >();
 
@@ -404,59 +459,79 @@ export class WorkspaceWatcherManager {
    * Returns current active workspace path for a window
    */
   getWorkspacePath(windowId: number): string | undefined {
-    return this.watchers.get(windowId)?.workspacePath;
+    return this.watchers.get(windowId)?.workspacePaths[0];
   }
 
   /**
-   * Starts watching a workspace directory for changes
+   * Returns all active workspace paths for a window
+   */
+  getWorkspacePaths(windowId: number): string[] {
+    return this.watchers.get(windowId)?.workspacePaths ?? [];
+  }
+
+  /**
+   * Starts watching a workspace directory or multiple directories for changes
    */
   startWatching(
     windowId: number,
-    workspacePath: string,
+    workspacePathOrPaths: string | string[],
     onChange: (changedPath: string) => void
   ): void {
     this.stopWatching(windowId);
 
-    const expandedPath = path.resolve(expandTilde(workspacePath));
+    const rawList = Array.isArray(workspacePathOrPaths)
+      ? workspacePathOrPaths
+      : [workspacePathOrPaths];
+    const expandedPaths = rawList
+      .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+      .map((p) => path.resolve(expandTilde(p)));
 
-    try {
-      const watcher = watch(expandedPath, { recursive: true }, (_eventType, filename) => {
-        if (!filename) return;
+    if (expandedPaths.length === 0) return;
 
-        const normalized = filename.replace(/\\/g, '/');
-        // Ignore internal changes in .git, node_modules, and target to prevent event storms
-        if (
-          normalized.startsWith('.git/') ||
-          normalized.startsWith('node_modules/') ||
-          normalized.startsWith('target/') ||
-          normalized === '.git' ||
-          normalized === 'node_modules' ||
-          normalized === 'target'
-        ) {
-          return;
-        }
+    const fsWatchers: FSWatcher[] = [];
 
-        const entry = this.watchers.get(windowId);
-        if (!entry) return;
+    for (const expandedPath of expandedPaths) {
+      try {
+        const watcher = watch(expandedPath, { recursive: true }, (_eventType, filename) => {
+          if (!filename) return;
 
-        if (entry.debounceTimer) {
-          clearTimeout(entry.debounceTimer);
-        }
+          const normalized = filename.replace(/\\/g, '/');
+          // Ignore internal changes in .git, node_modules, and target to prevent event storms
+          if (
+            normalized.startsWith('.git/') ||
+            normalized.startsWith('node_modules/') ||
+            normalized.startsWith('target/') ||
+            normalized === '.git' ||
+            normalized === 'node_modules' ||
+            normalized === 'target'
+          ) {
+            return;
+          }
 
-        entry.debounceTimer = setTimeout(() => {
-          invalidateGitStatusCache(expandedPath);
-          onChange(expandedPath);
-        }, 300);
-      });
+          const entry = this.watchers.get(windowId);
+          if (!entry) return;
 
-      this.watchers.set(windowId, {
-        watcher,
-        debounceTimer: null,
-        workspacePath: expandedPath,
-      });
-    } catch (error) {
-      console.error(`Failed to start workspace watcher for ${workspacePath}:`, error);
+          if (entry.debounceTimer) {
+            clearTimeout(entry.debounceTimer);
+          }
+
+          entry.debounceTimer = setTimeout(() => {
+            invalidateGitStatusCache(expandedPath);
+            onChange(expandedPath);
+          }, 300);
+        });
+
+        fsWatchers.push(watcher);
+      } catch (error) {
+        console.error(`Failed to start workspace watcher for ${expandedPath}:`, error);
+      }
     }
+
+    this.watchers.set(windowId, {
+      watchers: fsWatchers,
+      debounceTimer: null,
+      workspacePaths: expandedPaths,
+    });
   }
 
   /**
@@ -468,10 +543,12 @@ export class WorkspaceWatcherManager {
       if (entry.debounceTimer) {
         clearTimeout(entry.debounceTimer);
       }
-      try {
-        entry.watcher.close();
-      } catch {
-        // Ignore close errors
+      for (const w of entry.watchers) {
+        try {
+          w.close();
+        } catch {
+          // Ignore close errors
+        }
       }
       this.watchers.delete(windowId);
     }

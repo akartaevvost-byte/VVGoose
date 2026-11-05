@@ -33,6 +33,7 @@ describe('FileExplorer', () => {
         path: '/mock/workspace/crates',
         relativePath: 'crates',
         isDirectory: true,
+        isIgnored: false,
       },
       {
         name: 'Cargo.toml',
@@ -40,6 +41,7 @@ describe('FileExplorer', () => {
         relativePath: 'Cargo.toml',
         isDirectory: false,
         gitStatus: 'modified',
+        isIgnored: false,
       },
       {
         name: 'README.md',
@@ -47,6 +49,7 @@ describe('FileExplorer', () => {
         relativePath: 'README.md',
         isDirectory: false,
         gitStatus: 'untracked',
+        isIgnored: false,
       },
     ];
 
@@ -56,6 +59,7 @@ describe('FileExplorer', () => {
         path: '/mock/workspace/crates/goose',
         relativePath: 'crates/goose',
         isDirectory: true,
+        isIgnored: false,
       },
     ];
 
@@ -78,9 +82,9 @@ describe('FileExplorer', () => {
       </WorkspaceProvider>
     );
 
-    // Verify workspace name in header
+    // Verify workspace name in header and root node
     await waitFor(() => {
-      expect(screen.getByText('workspace')).toBeDefined();
+      expect(screen.getAllByText('workspace').length).toBe(2);
       expect(screen.getByText('crates')).toBeDefined();
       expect(screen.getByText('Cargo.toml')).toBeDefined();
       expect(screen.getByText('README.md')).toBeDefined();
@@ -219,5 +223,223 @@ describe('FileExplorer', () => {
     await waitFor(() => {
       expect(screen.queryByText('target')).toBeNull();
     });
+  });
+
+  it('collapses the root directory when clicking on its tree node', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    const mockRootNodes: WorkspaceFileNode[] = [
+      {
+        name: 'crates',
+        path: '/mock/workspace/crates',
+        relativePath: 'crates',
+        isDirectory: true,
+        isIgnored: false,
+      },
+    ];
+
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockImplementation((_root: string, relPath: string) => {
+        if (!relPath) return Promise.resolve(mockRootNodes);
+        return Promise.resolve([]);
+      }),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('crates')).toBeDefined();
+    });
+
+    // The root node in the tree is the second 'workspace' element
+    const rootNodes = screen.getAllByText('workspace');
+    const treeRootNode = rootNodes[1];
+    fireEvent.click(treeRootNode);
+
+    // Collapsing root hides its children
+    await waitFor(() => {
+      expect(screen.queryByText('crates')).toBeNull();
+    });
+
+    // Clicking again expands it
+    fireEvent.click(treeRootNode);
+    await waitFor(() => {
+      expect(screen.getByText('crates')).toBeDefined();
+    });
+  });
+
+  it('renders multiple root nodes for multi-root workspace', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/multi-root');
+    localStorage.setItem(
+      'goose_workspace_folders',
+      JSON.stringify([
+        { path: '/mock/multi-root/backend', name: 'backend' },
+        { path: '/mock/multi-root/frontend', name: 'frontend' },
+      ])
+    );
+
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockImplementation((root: string, relPath: string) => {
+        if (root.endsWith('backend') && !relPath) {
+          return Promise.resolve([
+            {
+              name: 'server.rs',
+              path: '/mock/multi-root/backend/server.rs',
+              relativePath: 'server.rs',
+              isDirectory: false,
+              isIgnored: false,
+            },
+          ]);
+        }
+        if (root.endsWith('frontend') && !relPath) {
+          return Promise.resolve([
+            {
+              name: 'App.tsx',
+              path: '/mock/multi-root/frontend/App.tsx',
+              relativePath: 'App.tsx',
+              isDirectory: false,
+              isIgnored: false,
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    // Both root folders and their children should be visible
+    await waitFor(() => {
+      expect(screen.getByText('backend')).toBeDefined();
+      expect(screen.getByText('server.rs')).toBeDefined();
+      expect(screen.getByText('frontend')).toBeDefined();
+      expect(screen.getByText('App.tsx')).toBeDefined();
+      expect(screen.getByText('2 папок')).toBeDefined();
+    });
+  });
+
+  it('protects root folder from delete and rename in single-root workspace', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    const mockDeletePath = vi.fn().mockResolvedValue({ success: true });
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockResolvedValue([]),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceDeletePath: mockDeletePath,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('workspace').length).toBe(2);
+    });
+
+    const rootTreeItem = screen.getAllByText('workspace')[1];
+    fireEvent.contextMenu(rootTreeItem);
+
+    // Root folder should have create actions, but NOT rename or delete
+    await waitFor(() => {
+      expect(screen.getByText('Создать файл')).toBeDefined();
+      expect(screen.getByText('Создать папку')).toBeDefined();
+    });
+
+    expect(screen.queryByText('Переименовать...')).toBeNull();
+    expect(screen.queryByText('Удалить')).toBeNull();
+    expect(screen.queryByText('Убрать папку из рабочей области')).toBeNull();
+    expect(mockDeletePath).not.toHaveBeenCalled();
+  });
+
+  it('removes a root folder from multi-root workspace without physical deletion from disk', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/multi-root');
+    localStorage.setItem(
+      'goose_workspace_folders',
+      JSON.stringify([
+        { path: '/mock/multi-root/backend', name: 'backend' },
+        { path: '/mock/multi-root/frontend', name: 'frontend' },
+      ])
+    );
+
+    const mockDeletePath = vi.fn().mockResolvedValue({ success: true });
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockResolvedValue([]),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceDeletePath: mockDeletePath,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('backend')).toBeDefined();
+      expect(screen.getByText('frontend')).toBeDefined();
+    });
+
+    // Right-click on backend root node
+    const backendNode = screen.getByText('backend');
+    fireEvent.contextMenu(backendNode);
+
+    // Multi-root context menu should show "Убрать папку из рабочей области", but NOT "Переименовать..." or "Удалить"
+    await waitFor(() => {
+      expect(screen.getByText('Убрать папку из рабочей области')).toBeDefined();
+    });
+    expect(screen.queryByText('Переименовать...')).toBeNull();
+    expect(screen.queryByText('Удалить')).toBeNull();
+
+    // Click "Убрать папку из рабочей области"
+    fireEvent.click(screen.getByText('Убрать папку из рабочей области'));
+
+    // Confirmation modal should open
+    await waitFor(() => {
+      expect(screen.getByText(/Убрать папку «backend» из рабочей области\?/)).toBeDefined();
+      expect(
+        screen.getByText(/Папка будет убрана из рабочей области. Файлы на диске останутся без изменений./)
+      ).toBeDefined();
+    });
+
+    // Confirm removal
+    const confirmBtn = screen.getByRole('button', { name: 'Убрать' });
+    fireEvent.click(confirmBtn);
+
+    // Verify workspaceDeletePath (fs.rm) is NEVER called!
+    expect(mockDeletePath).not.toHaveBeenCalled();
+
+    // Verify backend is removed and frontend remains
+    await waitFor(() => {
+      expect(screen.queryByText('backend')).toBeNull();
+      expect(screen.getAllByText('frontend').length).toBe(2);
+    });
+
+    // Verify localStorage workspace folders was updated
+    const savedFolders = JSON.parse(localStorage.getItem('goose_workspace_folders') || '[]');
+    expect(savedFolders).toEqual([{ path: '/mock/multi-root/frontend', name: 'frontend' }]);
   });
 });

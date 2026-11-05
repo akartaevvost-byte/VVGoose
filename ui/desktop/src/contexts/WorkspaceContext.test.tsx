@@ -38,6 +38,7 @@ describe('WorkspaceContext', () => {
       workspaceCreateFile: vi.fn().mockResolvedValue({ success: true }),
       workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
       workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      selectFileOrDirectory: vi.fn().mockResolvedValue(null),
       on: vi.fn(),
       off: vi.fn(),
     };
@@ -363,6 +364,70 @@ describe('WorkspaceContext', () => {
       expect.objectContaining({
         title: 'Не удалось открыть файл',
         msg: 'File exceeds maximum supported size (10MB)',
+      })
+    );
+  });
+
+  it('proposeDiff opens and activates a tab for a new non-existent file', async () => {
+    (window.electron.workspaceReadFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      content: '',
+      filePath: '/repo/src/new-file.ts',
+      error: null,
+      found: false,
+      isBinary: false,
+    });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.proposeDiff({
+        id: 'diff-new-file',
+        filePath: '/repo/src/new-file.ts',
+        fileName: 'new-file.ts',
+        originalContent: '',
+        proposedContent: 'export const created = true;\n',
+      });
+    });
+
+    expect(result.current.openFiles.some((f) => f.path === '/repo/src/new-file.ts')).toBe(true);
+    expect(result.current.activeFilePath).toBe('/repo/src/new-file.ts');
+    expect(result.current.isEditorVisible).toBe(true);
+    expect(result.current.pendingDiff?.filePath).toBe('/repo/src/new-file.ts');
+  });
+
+  it('saveFile skips disk write when tab is not dirty', async () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.openFile('/repo/a.txt');
+    });
+
+    vi.clearAllMocks();
+
+    let saved = false;
+    await act(async () => {
+      saved = await result.current.saveFile('/repo/a.txt');
+    });
+
+    expect(saved).toBe(true);
+    expect(window.electron.workspaceCreateFile).not.toHaveBeenCalled();
+  });
+
+  it('openWorkspaceFileDialog rejects files not ending with .code-workspace', async () => {
+    (window.electron.selectFileOrDirectory as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      '/path/to/random.txt'
+    );
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.openWorkspaceFileDialog();
+    });
+
+    expect(toastsModule.toastError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Ошибка открытия файла',
+        msg: 'Выбранный файл должен иметь расширение .code-workspace',
       })
     );
   });
