@@ -431,4 +431,24 @@ describe('WorkspaceContext', () => {
       })
     );
   });
+
+  it('toggles isChatVisible and persists to localStorage', () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    expect(result.current.isChatVisible).toBe(true);
+
+    act(() => {
+      result.current.setIsChatVisible(false);
+    });
+
+    expect(result.current.isChatVisible).toBe(false);
+    expect(localStorage.getItem('goose_chat_visible')).toBe('false');
+
+    act(() => {
+      result.current.setIsChatVisible(true);
+    });
+
+    expect(result.current.isChatVisible).toBe(true);
+    expect(localStorage.getItem('goose_chat_visible')).toBe('true');
+  });
 });

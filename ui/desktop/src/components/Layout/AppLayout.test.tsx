@@ -196,4 +196,42 @@ describe('AppLayout 3-panel layout', () => {
     expect(screen.getByTitle('Toggle editor')).toBeDefined();
     expect(screen.getByTitle('Toggle File Explorer (⌘⇧E)')).toBeDefined();
   });
+
+  it('toggles chat panel visibility using the message button in header', () => {
+    renderWithProviders('/pair');
+
+    const chatToggle = screen.getByTitle('Toggle chat (⌘J)');
+    expect(chatToggle).toBeDefined();
+
+    // Chat sessions container should be visible in main left panel initially
+    const chatContainer = screen.getByTestId('chat-sessions-container');
+    expect(chatContainer.parentElement?.parentElement?.style.display).not.toBe('none');
+
+    // Click chat toggle to hide
+    fireEvent.click(chatToggle);
+
+    // Chat sessions container is preserved in hidden container to keep SSE alive
+    const chatContainerHidden = screen.getByTestId('chat-sessions-container');
+    expect(chatContainerHidden.parentElement?.className).toContain('hidden');
+
+    // Click chat toggle again to restore
+    fireEvent.click(chatToggle);
+    const chatContainerRestored = screen.getByTestId('chat-sessions-container');
+    expect(chatContainerRestored.parentElement?.parentElement?.style.display).not.toBe('none');
+  });
+
+  it('toggles chat visibility using Cmd+J shortcut', () => {
+    renderWithProviders('/pair');
+
+    // Press Cmd+J (macOS)
+    fireEvent.keyDown(window, { key: 'j', metaKey: true });
+
+    const chatContainerHidden = screen.getByTestId('chat-sessions-container');
+    expect(chatContainerHidden.parentElement?.className).toContain('hidden');
+
+    // Press again to show
+    fireEvent.keyDown(window, { key: 'J', metaKey: true });
+    const chatContainerRestored = screen.getByTestId('chat-sessions-container');
+    expect(chatContainerRestored.parentElement?.parentElement?.style.display).not.toBe('none');
+  });
 });

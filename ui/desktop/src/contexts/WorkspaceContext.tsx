@@ -46,6 +46,8 @@ interface WorkspaceContextType {
   saveFile: (filePath: string) => Promise<boolean>;
   saveActiveFile: () => Promise<boolean>;
   updateFileContent: (filePath: string, content: string) => void;
+  isChatVisible: boolean;
+  setIsChatVisible: React.Dispatch<React.SetStateAction<boolean>>;
   isEditorVisible: boolean;
   setIsEditorVisible: React.Dispatch<React.SetStateAction<boolean>>;
   chatWidth: number;
@@ -66,6 +68,7 @@ export const WorkspaceContext = createContext<WorkspaceContextType | null>(null)
 const STORAGE_KEY = 'goose_workspace_path';
 const WORKSPACE_FOLDERS_KEY = 'goose_workspace_folders';
 const CHAT_WIDTH_KEY = 'goose_chat_width';
+const CHAT_VISIBLE_KEY = 'goose_chat_visible';
 const EDITOR_VISIBLE_KEY = 'goose_editor_visible';
 const EXPLORER_VISIBLE_KEY = 'goose_explorer_visible';
 const EXPLORER_WIDTH_KEY = 'goose_explorer_width';
@@ -116,6 +119,27 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   openFilesRef.current = openFiles;
 
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+
+  const [isChatVisible, setIsChatVisibleState] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(CHAT_VISIBLE_KEY);
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const setIsChatVisible = useCallback<React.Dispatch<React.SetStateAction<boolean>>>((value) => {
+    setIsChatVisibleState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      try {
+        localStorage.setItem(CHAT_VISIBLE_KEY, String(next));
+      } catch {
+        // Ignore storage errors
+      }
+      return next;
+    });
+  }, []);
 
   const [isEditorVisible, setIsEditorVisibleState] = useState<boolean>(() => {
     try {
@@ -744,6 +768,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       saveFile,
       saveActiveFile,
       updateFileContent,
+      isChatVisible,
+      setIsChatVisible,
       isEditorVisible,
       setIsEditorVisible,
       chatWidth,
@@ -782,6 +808,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       saveFile,
       saveActiveFile,
       updateFileContent,
+      isChatVisible,
+      setIsChatVisible,
       isEditorVisible,
       setIsEditorVisible,
       chatWidth,

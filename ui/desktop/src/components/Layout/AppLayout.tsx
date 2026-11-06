@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IpcRendererEvent } from 'electron';
 import { Outlet, useLocation } from 'react-router';
 import { motion } from 'framer-motion';
-import { PanelLeft, Columns2, FolderTree } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { defineMessages, useIntl } from '../../i18n';
 import { Button } from '../ui/button';
 import ChatSessionsContainer from '../ChatSessionsContainer';
@@ -12,6 +12,7 @@ import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext
 import { Navigation } from './NavigationPanel';
 import { EditorArea } from '../Editor/EditorArea';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
+import { PanelLayoutIcon } from './PanelLayoutIcon';
 import { Z_INDEX } from './constants';
 import { cn } from '../../utils';
 import { UserInput } from '../../types/message';
@@ -25,6 +26,10 @@ const i18n = defineMessages({
   collapseNavigation: {
     id: 'appLayout.collapseNavigation',
     defaultMessage: 'Collapse navigation',
+  },
+  toggleChat: {
+    id: 'appLayout.toggleChat',
+    defaultMessage: 'Toggle chat',
   },
   toggleEditor: {
     id: 'appLayout.toggleEditor',
@@ -71,6 +76,8 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
 
   const { isNavExpanded, setIsNavExpanded, navWidth, setNavWidth } = useNavigationContext();
   const {
+    isChatVisible,
+    setIsChatVisible,
     isEditorVisible,
     setIsEditorVisible,
     chatWidth,
@@ -199,22 +206,32 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   }, [isNavExpanded, setIsNavExpanded]);
 
   // Cmd+Shift+E / Ctrl+Shift+E to toggle file explorer panel (isExplorerVisible)
+  // Cmd+J / Ctrl+J to toggle chat window (isChatVisible)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+
+      const isModifier = e.metaKey || e.ctrlKey;
+
+      if (isModifier && (e.key.toLowerCase() === 'j' || e.code === 'KeyJ') && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setIsChatVisible((v) => !v);
+        return;
+      }
+
       if (
-        (e.metaKey || e.ctrlKey) &&
+        isModifier &&
         e.shiftKey &&
         (e.key.toLowerCase() === 'e' || e.code === 'KeyE')
       ) {
-        const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-        if (tag === 'input' || tag === 'textarea') return;
         e.preventDefault();
         setIsExplorerVisible((v) => !v);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setIsExplorerVisible]);
+  }, [setIsChatVisible, setIsExplorerVisible]);
 
   if (!chatContext) {
     throw new Error('AppLayoutContent must be used within ChatProvider');
@@ -238,6 +255,8 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   }
 
   const needsTrafficLightInset = safeIsMacOS && !isFullScreen;
+  const chatShortcut = safeIsMacOS ? '⌘J' : 'Ctrl+J';
+  const chatToggleTitle = `${intl.formatMessage(i18n.toggleChat)} (${chatShortcut})`;
   const navToggleTitle = intl.formatMessage(
     isNavExpanded ? i18n.collapseNavigation : i18n.openNavigation
   );
@@ -252,60 +271,95 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         style={{ zIndex: Z_INDEX.HEADER }}
         className="h-9 w-full flex items-center justify-between px-3 border-b border-border-primary/40 bg-background-secondary/30 select-none flex-shrink-0 app-drag-region relative"
       >
-        {/* Left Section: Traffic light spacing on macOS + Navigation sidebar toggle */}
-        <div className={cn('flex items-center gap-1.5 no-drag', needsTrafficLightInset ? 'pl-[76px]' : 'pl-1')}>
+        {/* Left Section: Traffic light spacing on macOS */}
+        <div className={cn('flex items-center gap-1.5', needsTrafficLightInset ? 'w-[76px]' : 'w-2')} />
+
+        {/* Right Section: Workspace & Layout toggles */}
+        <div className="flex items-center gap-1 no-drag">
+          {/* Chat Window Toggle (Message icon) */}
+          {isMainWorkspaceRoute && (
+            <>
+              <Button
+                onClick={() => setIsChatVisible((v) => !v)}
+                onMouseDown={(e) => e.stopPropagation()}
+                className={cn(
+                  'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
+                  isChatVisible
+                    ? 'bg-background-tertiary text-text-primary shadow-xs'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
+                )}
+                variant="ghost"
+                size="xs"
+                title={chatToggleTitle}
+                aria-label={chatToggleTitle}
+              >
+                <MessageSquare
+                  className={cn(
+                    'w-4 h-4 pointer-events-none transition-colors',
+                    isChatVisible && 'fill-current'
+                  )}
+                />
+              </Button>
+              <div className="w-[1px] h-4 bg-border-primary/40 mx-0.5" />
+            </>
+          )}
+
+          {/* Left Panel (Navigation Sidebar) */}
           <Button
             onClick={() => setIsNavExpanded(!isNavExpanded)}
             onMouseDown={(e) => e.stopPropagation()}
-            className="no-drag hover:!bg-background-tertiary h-7 w-7 p-0 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer"
+            className={cn(
+              'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
+              isNavExpanded
+                ? 'bg-background-tertiary text-text-primary shadow-xs'
+                : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
+            )}
             variant="ghost"
             size="xs"
             title={navToggleTitle}
             aria-label={navToggleTitle}
           >
-            <PanelLeft className="w-4 h-4 pointer-events-none" />
+            <PanelLayoutIcon position="left" isOpen={isNavExpanded} />
           </Button>
-        </div>
 
-        {/* Right Section: Workspace toggles */}
-        {isMainWorkspaceRoute && (
-          <div className="flex items-center gap-1.5 no-drag">
-            <Button
-              onClick={() => setIsEditorVisible((v) => !v)}
-              onMouseDown={(e) => e.stopPropagation()}
-              className={cn(
-                'no-drag h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors cursor-pointer',
-                isEditorVisible
-                  ? 'bg-background-tertiary text-text-primary font-medium'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
-              )}
-              variant="ghost"
-              size="xs"
-              title={editorToggleTitle}
-              aria-label={editorToggleTitle}
-            >
-              <Columns2 className="w-3.5 h-3.5 pointer-events-none" />
-              <span className="text-[11px] pointer-events-none">Редактор</span>
-            </Button>
-            <Button
-              onClick={() => setIsExplorerVisible((v) => !v)}
-              onMouseDown={(e) => e.stopPropagation()}
-              className={cn(
-                'no-drag h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors cursor-pointer',
-                isExplorerVisible
-                  ? 'bg-background-tertiary text-text-primary font-medium'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
-              )}
-              variant="ghost"
-              size="xs"
-              title={explorerToggleTitle}
-              aria-label={explorerToggleTitle}
-            >
-              <FolderTree className="w-3.5 h-3.5 pointer-events-none" />
-              <span className="text-[11px] pointer-events-none">Файлы</span>
-            </Button>
-          </div>
-        )}
+          {/* Center Panel (Editor) & Right Panel (Files) on Main Workspace Routes */}
+          {isMainWorkspaceRoute && (
+            <>
+              <Button
+                onClick={() => setIsEditorVisible((v) => !v)}
+                onMouseDown={(e) => e.stopPropagation()}
+                className={cn(
+                  'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
+                  isEditorVisible
+                    ? 'bg-background-tertiary text-text-primary shadow-xs'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
+                )}
+                variant="ghost"
+                size="xs"
+                title={editorToggleTitle}
+                aria-label={editorToggleTitle}
+              >
+                <PanelLayoutIcon position="center" isOpen={isEditorVisible} />
+              </Button>
+              <Button
+                onClick={() => setIsExplorerVisible((v) => !v)}
+                onMouseDown={(e) => e.stopPropagation()}
+                className={cn(
+                  'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
+                  isExplorerVisible
+                    ? 'bg-background-tertiary text-text-primary shadow-xs'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
+                )}
+                variant="ghost"
+                size="xs"
+                title={explorerToggleTitle}
+                aria-label={explorerToggleTitle}
+              >
+                <PanelLayoutIcon position="right" isOpen={isExplorerVisible} />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Main content with navigation. Shared canvas; the sidebar is a
@@ -336,40 +390,51 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         {isMainWorkspaceRoute ? (
           <div className="flex flex-1 w-full h-full min-h-0 flex-row overflow-hidden">
             {/* Left Panel: Goose Agent Chat or Hub ("Новый чат") */}
-            <div
-              style={{ width: isEditorVisible || isExplorerVisible ? chatWidth : '100%' }}
-              className={cn(
-                'h-full p-2 pl-0 flex flex-col min-w-[300px]',
-                isEditorVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1'
-              )}
-            >
-              <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
-                {isOnPairRoute ? (
-                  <>
-                    <Outlet />
-                    <ChatSessionsContainer
-                      setChat={setChat}
-                      activeSessions={activeSessions}
-                      liveVoice={liveVoice}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <Outlet />
-                    <div className="hidden">
+            {isChatVisible ? (
+              <div
+                style={{ width: isEditorVisible || isExplorerVisible ? chatWidth : '100%' }}
+                className={cn(
+                  'h-full p-2 pl-0 flex flex-col min-w-[300px]',
+                  isEditorVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1'
+                )}
+              >
+                <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
+                  {isOnPairRoute ? (
+                    <>
+                      <Outlet />
                       <ChatSessionsContainer
                         setChat={setChat}
                         activeSessions={activeSessions}
                         liveVoice={liveVoice}
                       />
-                    </div>
-                  </>
-                )}
+                    </>
+                  ) : (
+                    <>
+                      <Outlet />
+                      <div className="hidden">
+                        <ChatSessionsContainer
+                          setChat={setChat}
+                          activeSessions={activeSessions}
+                          liveVoice={liveVoice}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="hidden">
+                <Outlet />
+                <ChatSessionsContainer
+                  setChat={setChat}
+                  activeSessions={activeSessions}
+                  liveVoice={liveVoice}
+                />
+              </div>
+            )}
 
             {/* Splitter between Chat/Hub and Center */}
-            {(isEditorVisible || isExplorerVisible) && (
+            {isChatVisible && (isEditorVisible || isExplorerVisible) && (
               <div
                 className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
                 onMouseDown={handleChatResizeMouseDown}
@@ -379,7 +444,12 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
 
             {/* Center Panel: Editor Area */}
             {isEditorVisible && (
-              <div className="flex-1 h-full min-w-[300px] p-2 pl-0">
+              <div
+                className={cn(
+                  'h-full p-2 pl-0 flex flex-col min-w-[300px]',
+                  isExplorerVisible || isChatVisible ? 'flex-1' : 'flex-1 w-full'
+                )}
+              >
                 <EditorArea />
               </div>
             )}
@@ -396,14 +466,50 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
             {/* Right Panel: File Explorer */}
             {isExplorerVisible && (
               <div
-                style={{ width: isEditorVisible ? explorerWidth : 'auto' }}
+                style={{ width: isEditorVisible || isChatVisible ? explorerWidth : '100%' }}
                 className={cn(
                   'h-full p-2 pl-0 flex flex-col min-w-[200px]',
-                  isEditorVisible ? 'flex-shrink-0' : 'flex-1'
+                  isEditorVisible || isChatVisible ? 'flex-shrink-0' : 'flex-1'
                 )}
               >
                 <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
                   <FileExplorer />
+                </div>
+              </div>
+            )}
+
+            {/* Empty state when all workspace panels are closed */}
+            {!isChatVisible && !isEditorVisible && !isExplorerVisible && (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-text-secondary select-none">
+                <p className="text-sm font-medium mb-3 text-text-primary">Все рабочие панели скрыты</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setIsChatVisible(true)}
+                    className="cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                    Чат
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setIsEditorVisible(true)}
+                    className="cursor-pointer"
+                  >
+                    <PanelLayoutIcon position="center" isOpen={true} className="mr-1.5" />
+                    Редактор
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setIsExplorerVisible(true)}
+                    className="cursor-pointer"
+                  >
+                    <PanelLayoutIcon position="right" isOpen={true} className="mr-1.5" />
+                    Файлы
+                  </Button>
                 </div>
               </div>
             )}
