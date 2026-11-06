@@ -1,18 +1,43 @@
-import { Sliders, Bot, LoaderCircle, Settings, History } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Sliders,
+  Bot,
+  LoaderCircle,
+  Settings,
+  Search,
+  Check,
+  Brain,
+  Eye,
+  Pin,
+  ChevronDown,
+  ChevronRight,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useModelAndProvider } from '../../../ModelAndProviderContext';
 import { SwitchModelModal } from '../subcomponents/SwitchModelModal';
-import { View } from '../../../../utils/navigationUtils';
+import { View, ViewOptions } from '../../../../utils/navigationUtils';
+import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/popover';
+import Model, {
+  getProviderMetadata,
+  fetchModelReasoning,
+  fetchModelsForProviders,
+} from '../modelInterface';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../../../ui/dropdown-menu';
-import { getProviderMetadata, fetchModelReasoning } from '../modelInterface';
-import { getModelDisplayName } from '../predefinedModelsUtils';
-import { acpReadThinkingEffort } from '../../../../acp/providers';
+  getModelDisplayName,
+  getPredefinedModelsFromEnv,
+  shouldShowPredefinedModels,
+} from '../predefinedModelsUtils';
+import {
+  computeDefaultVisibleModels,
+  formatContextWindow,
+  getModelPricingTier,
+  loadCustomModelsSetting,
+  loadVisibleModelsSetting,
+  modelSupportsReasoning,
+  modelSupportsVision,
+} from '../modelsVisibility';
+import { acpListProviderDetails, acpReadThinkingEffort } from '../../../../acp/providers';
+import type { ProviderDetails } from '../../../../types/providers';
 
 import { ModelSettingsPanel } from '../../localInference/ModelSettingsPanel';
 import { ScrollArea } from '../../../ui/scroll-area';
@@ -34,6 +59,30 @@ const i18n = defineMessages({
   loadingModel: {
     id: 'modelsBottomBar.loadingModel',
     defaultMessage: 'Loading model...',
+  },
+  searchPlaceholder: {
+    id: 'modelsBottomBar.searchPlaceholder',
+    defaultMessage: 'Search models...',
+  },
+  pinnedModels: {
+    id: 'modelsBottomBar.pinnedModels',
+    defaultMessage: 'Pinned Models',
+  },
+  allModels: {
+    id: 'modelsBottomBar.allModels',
+    defaultMessage: 'All Models',
+  },
+  noModelsFound: {
+    id: 'modelsBottomBar.noModelsFound',
+    defaultMessage: 'No models found matching "{query}"',
+  },
+  configureVisibleModels: {
+    id: 'modelsBottomBar.configureVisibleModels',
+    defaultMessage: 'Configure visible models...',
+  },
+  moreOptions: {
+    id: 'modelsBottomBar.moreOptions',
+    defaultMessage: 'More...',
   },
   changeModel: {
     id: 'modelsBottomBar.changeModel',
@@ -60,15 +109,13 @@ const i18n = defineMessages({
 interface ModelsBottomBarProps {
   sessionId: string | null;
   dropdownRef: React.RefObject<HTMLDivElement>;
-  setView: (view: View) => void;
+  setView: (view: View, viewOptions?: ViewOptions) => void;
   sessionModel?: string | null;
   sessionProvider?: string | null;
   latestInference?: Message['metadata']['inference'] | null;
   onModelChanged: (override: { model: string; provider: string }) => void;
   sessionLoaded?: boolean;
 }
-
-type ModelMenuModal = 'switch-model' | 'local-model-settings';
 
 export default function ModelsBottomBar({
   sessionId,
@@ -80,8 +127,6 @@ export default function ModelsBottomBar({
   onModelChanged,
   sessionLoaded,
 }: ModelsBottomBarProps) {
-  // ChatInput owns the override state and passes effective model/provider as sessionModel/sessionProvider.
-  // Fall back to config defaults when no session-specific model is available.
   const {
     currentModel: configModel,
     currentProvider: configProvider,
@@ -95,24 +140,112 @@ export default function ModelsBottomBar({
   const [displayModelName, setDisplayModelName] = useState<string>(
     intl.formatMessage(i18n.selectModel)
   );
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
-  const pendingModalRef = useRef<ModelMenuModal | null>(null);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isAddModelModalOpen, setIsAddModelModalOpen] = useState(false);
   const [isLocalModelSettingsOpen, setIsLocalModelSettingsOpen] = useState(false);
   const [providerDefaultModel, setProviderDefaultModel] = useState<string | null>(null);
   const [recentModels, setRecentModels] = useState<RecentModel[]>([]);
+
+  // Quick picker data
+  const [providers, setProviders] = useState<ProviderDetails[]>([]);
+  const [providerModelsMap, setProviderModelsMap] = useState<Record<string, Model[]>>({});
+  const [visibleModelsMap, setVisibleModelsMap] = useState<Record<string, string[]>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
 
   const loadRecentModels = useCallback(async () => {
     const stored = (await window.electron.getSetting('recentModels')) ?? [];
     setRecentModels(stored);
   }, []);
 
+  const loadModelsAndSettings = useCallback(async () => {
+    try {
+      const [allProviders, savedVisible, savedCustom] = await Promise.all([
+        acpListProviderDetails().catch(() => [] as ProviderDetails[]),
+        loadVisibleModelsSetting(),
+        loadCustomModelsSetting(),
+      ]);
+
+      const active = allProviders.filter((p) => p.is_configured);
+      setProviders(active);
+      setVisibleModelsMap(savedVisible);
+
+      // Fast initial map from known_models and customModels
+      const initialMap: Record<string, Model[]> = {};
+      active.forEach((p) => {
+        const known = (p.metadata.known_models || []).map(
+          (m) =>
+            ({
+              name: m.name,
+              provider: p.name,
+              context_limit: m.context_limit ?? undefined,
+              reasoning: m.reasoning ?? undefined,
+            }) as Model
+        );
+        const custom = (savedCustom[p.name] || []).map(
+          (name) =>
+            ({
+              name,
+              provider: p.name,
+            }) as Model
+        );
+
+        const list = [...known];
+        custom.forEach((c) => {
+          if (!list.some((item) => item.name === c.name)) {
+            list.push(c);
+          }
+        });
+
+        if (p.metadata.default_model && !list.some((m) => m.name === p.metadata.default_model)) {
+          list.unshift({ name: p.metadata.default_model, provider: p.name });
+        }
+
+        initialMap[p.name] = list;
+      });
+      setProviderModelsMap(initialMap);
+
+      // Fetch dynamic models in background
+      fetchModelsForProviders(active)
+        .then((results) => {
+          setProviderModelsMap((prev) => {
+            const updated = { ...prev };
+            results.forEach(({ provider: p, models }) => {
+              if (models && models.length > 0) {
+                const existing = updated[p.name] || [];
+                const merged = [...models];
+                existing.forEach((item) => {
+                  if (!merged.some((m) => m.name === item.name)) {
+                    merged.push(item);
+                  }
+                });
+                updated[p.name] = merged;
+              }
+            });
+            return updated;
+          });
+        })
+        .catch(() => {
+          // Keep known models
+        });
+    } catch (e) {
+      console.error('Failed to load models for quick picker:', e);
+    }
+  }, []);
+
   useEffect(() => {
     void loadRecentModels();
-  }, [loadRecentModels]);
+    void loadModelsAndSettings();
 
-  // Show a visible loading placeholder while session metadata is still being fetched,
-  // rather than flashing the config default or leaving the footer blank.
+    const handleSync = () => {
+      void loadModelsAndSettings();
+    };
+    window.addEventListener('goose-visible-models-changed', handleSync);
+    return () => {
+      window.removeEventListener('goose-visible-models-changed', handleSync);
+    };
+  }, [loadRecentModels, loadModelsAndSettings]);
+
   const isModelLoading = Boolean(sessionId && !sessionLoaded);
   const displayModel = currentModel || providerDefaultModel || displayModelName;
   const resolvedModel = latestInference?.resolvedModel ?? null;
@@ -138,7 +271,6 @@ export default function ModelsBottomBar({
       });
   }, [currentProvider, currentModel]);
 
-  // Fetch provider default model when provider changes and no current model
   useEffect(() => {
     if (currentProvider && !currentModel) {
       (async () => {
@@ -157,141 +289,372 @@ export default function ModelsBottomBar({
 
   useEffect(() => {
     if (!currentModel) return;
-    setDisplayModelName(getModelDisplayName(currentModel));
-  }, [currentModel]);
+    setDisplayModelName(getModelDisplayName(currentModel, currentProvider ?? undefined));
+  }, [currentModel, currentProvider]);
 
   const resolvedDisplayModelName = useMemo(
     () => (resolvedModel ? getModelDisplayName(resolvedModel) : null),
     [resolvedModel]
   );
 
-  const handleModelSelected = (model: string, provider: string) => {
-    void loadRecentModels();
-    onModelChanged({ model, provider });
-  };
-
-  const openModalAfterMenuCloses = (modal: ModelMenuModal) => {
-    pendingModalRef.current = modal;
-    setIsModelMenuOpen(false);
-  };
-
-  const handleModelMenuCloseAutoFocus = (event: Event) => {
-    const pendingModal = pendingModalRef.current;
-    if (!pendingModal) return;
-
-    pendingModalRef.current = null;
-    if (pendingModal === 'switch-model') {
-      event.preventDefault();
-      setIsAddModelModalOpen(true);
-    } else {
-      setIsLocalModelSettingsOpen(true);
-    }
-  };
-
-  const handleRecentModelClick = async (recent: RecentModel) => {
+  const handleSelectModel = async (
+    modelName: string,
+    providerName: string,
+    reasoning?: boolean
+  ) => {
     const previousModel = currentModel;
     const previousProvider = currentProvider;
 
-    const [reasoning, savedEffort] = await Promise.all([
-      fetchModelReasoning(recent.provider, recent.model),
+    const [modelReasoning, savedEffort] = await Promise.all([
+      reasoning !== undefined
+        ? reasoning
+        : fetchModelReasoning(providerName, modelName).catch(() => null),
       acpReadThinkingEffort().catch(() => null),
     ]);
-    const modelArg = reasoning
+
+    const modelArg = modelReasoning
       ? {
-          name: recent.model,
-          provider: recent.provider,
+          name: modelName,
+          provider: providerName,
           request_params: { thinking_effort: savedEffort ?? 'off' },
         }
-      : { name: recent.model, provider: recent.provider };
+      : { name: modelName, provider: providerName };
+
     const success = await changeModel(sessionId, modelArg);
     if (success) {
-      trackModelChanged(recent.provider, recent.model);
+      trackModelChanged(providerName, modelName);
       if (previousModel && previousProvider) {
         const updated = addToRecentModels(recentModels, previousProvider, previousModel);
         await window.electron.setSetting('recentModels', updated);
         setRecentModels(updated);
       }
-      onModelChanged({ model: recent.model, provider: recent.provider });
+      onModelChanged({ model: modelName, provider: providerName });
+      setIsPickerOpen(false);
+      setSearchQuery('');
     }
   };
 
-  const filteredRecentModels = recentModels.filter(
-    (r) => !(r.model === currentModel && r.provider === currentProvider)
-  );
+  // Compute pinned models across all active providers
+  const pinnedModelsList = useMemo(() => {
+    if (shouldShowPredefinedModels()) {
+      return getPredefinedModelsFromEnv();
+    }
+
+    const list: Model[] = [];
+    providers.forEach((p) => {
+      const allForProvider = providerModelsMap[p.name] || [];
+      const visibleNames =
+        visibleModelsMap[p.name] !== undefined
+          ? visibleModelsMap[p.name]
+          : computeDefaultVisibleModels(p, allForProvider);
+
+      visibleNames.forEach((name) => {
+        const found = allForProvider.find((m) => m.name === name);
+        if (found) {
+          list.push(found);
+        } else {
+          list.push({ name, provider: p.name });
+        }
+      });
+    });
+
+    return list;
+  }, [providers, providerModelsMap, visibleModelsMap]);
+
+  // All available models flattened
+  const allAvailableModels = useMemo(() => {
+    const list: Model[] = [];
+    providers.forEach((p) => {
+      const models = providerModelsMap[p.name] || [];
+      models.forEach((m) => {
+        if (
+          !list.some((existing) => existing.name === m.name && existing.provider === m.provider)
+        ) {
+          list.push(m);
+        }
+      });
+    });
+    return list;
+  }, [providers, providerModelsMap]);
+
+  // Filtered models for search query
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return allAvailableModels.filter((m) => {
+      const nameMatch = m.name.toLowerCase().includes(q);
+      const aliasMatch = m.alias ? m.alias.toLowerCase().includes(q) : false;
+      const providerMatch = m.provider.toLowerCase().includes(q);
+      return nameMatch || aliasMatch || providerMatch;
+    });
+  }, [searchQuery, allAvailableModels]);
+
+  const toggleProviderExpand = (providerName: string) => {
+    setExpandedProviders((prev) => ({
+      ...prev,
+      [providerName]: !prev[providerName],
+    }));
+  };
+
+  const renderModelRow = (m: Model, showProviderTag = true) => {
+    const isSelected = m.name === currentModel && m.provider === currentProvider;
+    const isReasoning = modelSupportsReasoning(m.name, m.reasoning);
+    const isVision = modelSupportsVision(m.name, m.vision);
+    const contextLimit = formatContextWindow(m.context_limit);
+    const pricing = getModelPricingTier(m.name, m.provider);
+    const displayName = m.alias || getModelDisplayName(m.name, m.provider);
+
+    return (
+      <button
+        key={`${m.provider}/${m.name}`}
+        type="button"
+        onClick={() => void handleSelectModel(m.name, m.provider, m.reasoning)}
+        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors group cursor-pointer ${
+          isSelected
+            ? 'bg-primary/10 text-text-primary font-medium'
+            : 'hover:bg-background-tertiary text-text-secondary hover:text-text-primary'
+        }`}
+        data-testid={`model-item-${m.name}`}
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+          <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+            {isSelected ? (
+              <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-border-primary group-hover:bg-text-muted" />
+            )}
+          </div>
+          <span className="truncate text-xs font-mono" title={m.name}>
+            {displayName}
+          </span>
+          {showProviderTag && (
+            <span className="text-[10px] text-text-muted/80 flex-shrink-0 font-sans">
+              ({m.provider})
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {isReasoning && (
+            <span
+              title="Extended reasoning / thinking"
+              className="inline-flex items-center text-[10px] text-purple-400 p-0.5"
+            >
+              <Brain className="w-3 h-3" />
+            </span>
+          )}
+          {isVision && (
+            <span
+              title="Vision support"
+              className="inline-flex items-center text-[10px] text-blue-400 p-0.5"
+            >
+              <Eye className="w-3 h-3" />
+            </span>
+          )}
+          {contextLimit && (
+            <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-background-tertiary text-text-secondary border border-border-subtle">
+              {contextLimit}
+            </span>
+          )}
+          {pricing && <span className="text-[10px] font-mono text-text-muted">{pricing}</span>}
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div className="relative flex items-center" ref={dropdownRef}>
-      <DropdownMenu open={isModelMenuOpen} onOpenChange={setIsModelMenuOpen}>
-        <DropdownMenuTrigger className="flex items-center hover:cursor-pointer max-w-[180px] md:max-w-[200px] lg:max-w-[380px] min-w-0 text-text-primary/70 hover:text-text-primary transition-colors">
-          <div className="flex items-center truncate max-w-[130px] md:max-w-[200px] lg:max-w-[360px] min-w-0">
-            <Bot className="mr-1 h-4 w-4 flex-shrink-0" />
-            {isModelLoading ? (
-              <span
-                data-testid="model-loading-state"
-                className="inline-flex items-center gap-1 truncate text-xs"
+      <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="flex items-center hover:cursor-pointer max-w-[180px] md:max-w-[200px] lg:max-w-[380px] min-w-0 text-text-primary/70 hover:text-text-primary transition-colors focus:outline-hidden"
+            data-testid="model-selector-button"
+            aria-label="Select Model"
+          >
+            <div className="flex items-center truncate max-w-[130px] md:max-w-[200px] lg:max-w-[360px] min-w-0">
+              <Bot className="mr-1 h-4 w-4 flex-shrink-0" />
+              {isModelLoading ? (
+                <span
+                  data-testid="model-loading-state"
+                  className="inline-flex items-center gap-1 truncate text-xs"
+                >
+                  <LoaderCircle className="h-3 w-3 animate-spin flex-shrink-0" />
+                  <span className="truncate">{triggerLabel}</span>
+                </span>
+              ) : (
+                <span className="truncate text-xs">{triggerLabel}</span>
+              )}
+            </div>
+          </button>
+        </PopoverTrigger>
+
+        <PopoverContent
+          side="top"
+          align="start"
+          sideOffset={8}
+          className="w-[340px] sm:w-[380px] p-0 shadow-2xl border border-border-primary bg-background-primary rounded-xl overflow-hidden flex flex-col max-h-[480px]"
+          data-testid="quick-model-picker-content"
+        >
+          {/* Search bar */}
+          <div className="p-2 border-b border-border-subtle flex items-center gap-2 bg-background-secondary/30">
+            <Search className="w-4 h-4 text-text-muted flex-shrink-0 ml-1" />
+            <input
+              type="text"
+              placeholder={intl.formatMessage(i18n.searchPlaceholder)}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent text-xs w-full outline-hidden text-text-primary placeholder:text-text-muted"
+              autoFocus
+              data-testid="model-picker-search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-text-muted hover:text-text-primary p-0.5"
               >
-                <LoaderCircle className="h-3 w-3 animate-spin flex-shrink-0" />
-                <span className="truncate">{triggerLabel}</span>
-              </span>
-            ) : (
-              <span className="truncate text-xs">{triggerLabel}</span>
+                <X className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="top"
-          align="center"
-          className="w-64 text-sm"
-          onCloseAutoFocus={handleModelMenuCloseAutoFocus}
-        >
-          <h6 className="text-xs text-text-primary mt-2 ml-2">
-            {intl.formatMessage(i18n.currentModel)}
-          </h6>
-          <p className="flex items-center justify-between text-sm mx-2 pb-2 border-b mb-2">
-            {menuModelLabel}
-            {!isModelLoading && displayProvider && ` — ${displayProvider}`}
-          </p>
-          {shouldShowResolvedModel && resolvedDisplayModelName && (
-            <div className="mx-2 pb-2 border-b mb-2">
-              <h6 className="text-xs text-text-primary">
-                {intl.formatMessage(i18n.resolvedModel)}
-              </h6>
-              <p className="text-xs text-text-primary truncate" title={resolvedModel ?? undefined}>
-                {resolvedDisplayModelName}
-              </p>
-            </div>
-          )}
-          {filteredRecentModels.length > 0 && (
-            <>
-              <h6 className="text-xs text-text-primary mt-2 ml-2">
-                {intl.formatMessage(i18n.recentModels)}
-              </h6>
-              {filteredRecentModels.map((recent) => (
-                <DropdownMenuItem
-                  key={`${recent.provider}/${recent.model}`}
-                  onClick={() => void handleRecentModelClick(recent)}
+
+          {/* Current Model info header */}
+          <div className="px-3 py-1.5 bg-background-secondary/20 border-b border-border-subtle/40 flex items-center justify-between text-[11px] text-text-muted">
+            <span className="truncate">
+              {menuModelLabel}
+              {!isModelLoading && displayProvider && ` — ${displayProvider}`}
+            </span>
+            {shouldShowResolvedModel && resolvedDisplayModelName && (
+              <span className="text-[10px] text-primary truncate ml-2">
+                ({resolvedDisplayModelName})
+              </span>
+            )}
+          </div>
+
+          {/* Model items scroll area */}
+          <ScrollArea className="flex-1 overflow-y-auto max-h-[320px] p-1.5 space-y-1">
+            {searchQuery.trim() ? (
+              // Search results mode
+              searchResults.length > 0 ? (
+                <div className="space-y-0.5">
+                  <div className="px-2 py-1 text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                    Matches ({searchResults.length})
+                  </div>
+                  {searchResults.map((m) => renderModelRow(m, true))}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-xs text-text-muted">
+                  {intl.formatMessage(i18n.noModelsFound, { query: searchQuery })}
+                </div>
+              )
+            ) : (
+              // Normal categorized mode
+              <div className="space-y-2">
+                {/* Pinned Models Section */}
+                {pinnedModelsList.length > 0 && (
+                  <div className="space-y-0.5" data-testid="pinned-models-section">
+                    <div className="px-2 py-1 text-[11px] font-semibold text-text-secondary flex items-center gap-1.5 uppercase tracking-wider">
+                      <Pin className="w-3 h-3 text-primary" />
+                      {intl.formatMessage(i18n.pinnedModels)}
+                    </div>
+                    {pinnedModelsList.map((m) => renderModelRow(m, true))}
+                  </div>
+                )}
+
+                {/* Grouped by Provider Sections */}
+                {providers.map((p) => {
+                  const allForProvider = providerModelsMap[p.name] || [];
+                  // Models not in pinned list
+                  const unpinned = allForProvider.filter(
+                    (m) =>
+                      !pinnedModelsList.some(
+                        (pinned) => pinned.name === m.name && pinned.provider === p.name
+                      )
+                  );
+
+                  if (unpinned.length === 0) return null;
+
+                  const isExpanded = Boolean(expandedProviders[p.name]);
+
+                  return (
+                    <div key={p.name} className="space-y-0.5 pt-1 border-t border-border-subtle/50">
+                      <button
+                        type="button"
+                        onClick={() => toggleProviderExpand(p.name)}
+                        className="w-full flex items-center justify-between px-2 py-1 text-[11px] font-medium text-text-muted hover:text-text-primary rounded-md transition-colors cursor-pointer"
+                        data-testid={`toggle-provider-${p.name}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          {isExpanded ? (
+                            <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3" />
+                          )}
+                          {p.metadata.display_name || p.name}
+                        </span>
+                        <span className="text-[10px] text-text-muted">
+                          {isExpanded ? 'Hide' : `+${unpinned.length} more`}
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="pl-1 space-y-0.5 animate-in fade-in duration-100">
+                          {unpinned.map((m) => renderModelRow(m, false))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+
+          {/* Popover footer actions */}
+          <div className="p-2 border-t border-border-subtle bg-background-secondary/30 flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setIsPickerOpen(false);
+                setView('settings', { section: 'models' });
+              }}
+              className="flex items-center gap-1.5 px-2 py-1 text-text-secondary hover:text-text-primary hover:bg-background-tertiary rounded-md transition-colors cursor-pointer text-xs"
+              data-testid="btn-configure-visible-models"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>{intl.formatMessage(i18n.configureVisibleModels)}</span>
+            </button>
+
+            <div className="flex items-center gap-1">
+              {currentProvider === 'local' && currentModel && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPickerOpen(false);
+                    setIsLocalModelSettingsOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-text-secondary hover:text-text-primary hover:bg-background-tertiary rounded-md transition-colors cursor-pointer text-xs"
+                  title={intl.formatMessage(i18n.localModelSettings)}
                 >
-                  <History className="mr-2 h-3.5 w-3.5 flex-shrink-0 text-text-secondary" />
-                  <span className="truncate">
-                    {getModelDisplayName(recent.model)} — {recent.provider}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-            </>
-          )}
-          <DropdownMenuItem onSelect={() => openModalAfterMenuCloses('switch-model')}>
-            <span>{intl.formatMessage(i18n.changeModel)}</span>
-            <Sliders className="ml-auto h-4 w-4 rotate-90" />
-          </DropdownMenuItem>
-          {currentProvider === 'local' && currentModel && (
-            <DropdownMenuItem onSelect={() => openModalAfterMenuCloses('local-model-settings')}>
-              <span>{intl.formatMessage(i18n.localModelSettings)}</span>
-              <Settings className="ml-auto h-4 w-4" />
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPickerOpen(false);
+                  setIsAddModelModalOpen(true);
+                }}
+                className="text-text-muted hover:text-text-primary px-1.5 py-1 text-[11px] rounded-md transition-colors cursor-pointer"
+                title="Open detailed model switcher modal"
+                data-testid="btn-more-options"
+              >
+                {intl.formatMessage(i18n.moreOptions)}
+              </button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
 
       {isAddModelModalOpen ? (
         <SwitchModelModal
@@ -300,7 +663,7 @@ export default function ModelsBottomBar({
           onClose={() => setIsAddModelModalOpen(false)}
           sessionModel={currentModel}
           sessionProvider={currentProvider}
-          onModelSelected={(model, provider) => handleModelSelected(model, provider)}
+          onModelSelected={(model, provider) => onModelChanged({ model, provider })}
         />
       ) : null}
 
@@ -310,12 +673,12 @@ export default function ModelsBottomBar({
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
               <h3 className="text-sm font-medium text-text-default">
                 {intl.formatMessage(i18n.localModelSettingsTitle, {
-                  modelName: getModelDisplayName(currentModel),
+                  modelName: getModelDisplayName(currentModel, currentProvider ?? undefined),
                 })}
               </h3>
               <button
                 onClick={() => setIsLocalModelSettingsOpen(false)}
-                className="text-text-muted hover:text-text-default text-lg leading-none"
+                className="text-text-muted hover:text-text-default text-lg leading-none cursor-pointer"
               >
                 ×
               </button>

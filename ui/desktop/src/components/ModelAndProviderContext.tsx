@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { toastError, toastSuccess } from '../toasts';
 import Model, { getProviderMetadata } from './settings/models/modelInterface';
 import type { ProviderMetadata } from '../types/providers';
@@ -61,7 +61,7 @@ interface ModelAndProviderProviderProps {
 
 const ModelAndProviderContext = createContext<ModelAndProviderContextType | undefined>(undefined);
 
-export { i18n as modelAndProviderMessages };
+export { ModelAndProviderContext, i18n as modelAndProviderMessages };
 
 function patchAcpSessionProviderModel(
   sessionId: string,
@@ -87,10 +87,12 @@ function patchAcpSessionProviderModel(
 export const ModelAndProviderProvider: React.FC<ModelAndProviderProviderProps> = ({ children }) => {
   const [currentModel, setCurrentModel] = useState<string | null>(null);
   const [currentProvider, setCurrentProvider] = useState<string | null>(null);
+  const updateSeqRef = useRef(0);
   const intl = useIntl();
 
   const changeModel = useCallback(
     async (sessionId: string | null, model: Model) => {
+      const seq = ++updateSeqRef.current;
       const modelName = model.name;
       const providerName = model.provider;
       let phase = 'agent';
@@ -106,14 +108,30 @@ export const ModelAndProviderProvider: React.FC<ModelAndProviderProviderProps> =
           patchAcpSessionProviderModel(sessionId, applied);
         }
 
-        // Only update the global config default when there's no session
-        // (i.e. changing from settings, not from within an existing chat)
-        if (!sessionId) {
-          phase = 'config';
-          await acpSaveDefaults(providerName, modelName);
+        // Always update the global config default and Electron settings,
+        // so that subsequent dialogs/chats will use this model and provider.
+        phase = 'config';
+        await acpSaveDefaults(providerName, modelName);
+
+        if (window.electron?.setSetting) {
+          await window.electron.setSetting('lastSelectedModelAndProvider', {
+            provider: providerName,
+            model: modelName,
+          });
         }
 
-        if (!sessionId) {
+        window.electron?.broadcastModelAndProviderChange?.({
+          provider: providerName,
+          model: modelName,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent('model-and-provider-changed', {
+            detail: { provider: providerName, model: modelName },
+          })
+        );
+
+        if (seq === updateSeqRef.current) {
           setCurrentProvider(providerName);
           setCurrentModel(modelName);
         }
@@ -156,17 +174,31 @@ export const ModelAndProviderProvider: React.FC<ModelAndProviderProviderProps> =
   }, []);
 
   const getCurrentModelAndProvider = useCallback(async () => {
-    let model: string | null;
-    let provider: string | null;
+    let model: string | null = null;
+    let provider: string | null = null;
 
     try {
-      const defaults = await acpReadDefaults();
-      model = defaults.modelId;
-      provider = defaults.providerId;
-    } catch {
-      console.error(`Failed to read default model or provider`);
-      throw new Error('Failed to read default model or provider');
+      if (window.electron?.getSetting) {
+        const lastSelected = await window.electron.getSetting('lastSelectedModelAndProvider');
+        if (lastSelected?.provider && lastSelected?.model) {
+          model = lastSelected.model;
+          provider = lastSelected.provider;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read lastSelectedModelAndProvider from settings:', e);
     }
+
+    if (!model || !provider) {
+      try {
+        const defaults = await acpReadDefaults();
+        model = defaults.modelId;
+        provider = defaults.providerId;
+      } catch (error) {
+        console.error(`Failed to read default model or provider`, error);
+      }
+    }
+
     if (!model || !provider) {
       return getFallbackModelAndProvider();
     }
@@ -193,37 +225,69 @@ export const ModelAndProviderProvider: React.FC<ModelAndProviderProviderProps> =
 
   const getCurrentModelDisplayName = useCallback(async () => {
     try {
-      const { modelId } = await acpReadDefaults();
-      return getModelDisplayName(modelId ?? '');
+      const { model, provider } = await getCurrentModelAndProvider();
+      return getModelDisplayName(model ?? '', provider ?? undefined);
     } catch {
       return intl.formatMessage(i18n.selectModel);
     }
-  }, [intl]);
+  }, [getCurrentModelAndProvider, intl]);
 
   const getCurrentProviderDisplayName = useCallback(async () => {
     try {
-      const { modelId } = await acpReadDefaults();
-      const providerDisplayName = getProviderDisplayName(modelId ?? '');
+      const { model, provider } = await getCurrentModelAndProvider();
+      const providerDisplayName = getProviderDisplayName(model ?? '', provider ?? undefined);
       if (providerDisplayName) {
         return providerDisplayName;
       }
       // Fall back to regular provider display name lookup
-      const { provider } = await getCurrentModelAndProviderForDisplay();
-      return provider;
+      const { provider: displayProvider } = await getCurrentModelAndProviderForDisplay();
+      return displayProvider;
     } catch {
       return '';
     }
-  }, [getCurrentModelAndProviderForDisplay]);
+  }, [getCurrentModelAndProvider, getCurrentModelAndProviderForDisplay]);
 
   const refreshCurrentModelAndProvider = useCallback(async () => {
+    const seq = ++updateSeqRef.current;
     try {
       const { model, provider } = await getCurrentModelAndProvider();
-      setCurrentModel(model);
-      setCurrentProvider(provider);
+      if (seq === updateSeqRef.current) {
+        setCurrentModel(model);
+        setCurrentProvider(provider);
+      }
     } catch (_error) {
       console.error('Failed to refresh current model and provider:', _error);
     }
   }, [getCurrentModelAndProvider]);
+
+  // Sync state between windows / processes
+  useEffect(() => {
+    const handleModelAndProviderSync = (data: { provider: string; model: string }) => {
+      if (data?.provider && data?.model) {
+        ++updateSeqRef.current;
+        setCurrentProvider(data.provider);
+        setCurrentModel(data.model);
+      }
+    };
+
+    let cleanupIpc: (() => void) | undefined;
+    if (window.electron?.onModelAndProviderChange) {
+      cleanupIpc = window.electron.onModelAndProviderChange(handleModelAndProviderSync);
+    }
+
+    const handleCustomEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ provider: string; model: string }>;
+      if (customEvent.detail) {
+        handleModelAndProviderSync(customEvent.detail);
+      }
+    };
+    window.addEventListener('model-and-provider-changed', handleCustomEvent);
+
+    return () => {
+      cleanupIpc?.();
+      window.removeEventListener('model-and-provider-changed', handleCustomEvent);
+    };
+  }, []);
 
   // Load initial model and provider on mount
   useEffect(() => {

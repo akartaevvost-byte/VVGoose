@@ -39,6 +39,8 @@ describe('WorkspaceContext', () => {
       workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
       workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
       selectFileOrDirectory: vi.fn().mockResolvedValue(null),
+      setSetting: vi.fn().mockResolvedValue(undefined),
+      getSetting: vi.fn().mockResolvedValue(null),
       on: vi.fn(),
       off: vi.fn(),
     };
@@ -68,6 +70,74 @@ describe('WorkspaceContext', () => {
     expect(result.current.recentWorkspaces.length).toBe(1);
     expect(result.current.recentWorkspaces[0].path).toBe('/my/new/project');
     expect(result.current.recentWorkspaces[0].name).toBe('project');
+  });
+
+  it('saves lastOpenedWorkspace setting when setWorkspacePath is called', () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    act(() => {
+      result.current.setWorkspacePath('/my/new/project');
+    });
+
+    expect(window.electron.setSetting).toHaveBeenCalledWith('lastOpenedWorkspace', {
+      path: '/my/new/project',
+      type: 'folder',
+      folders: [{ path: '/my/new/project', name: 'project' }],
+      name: 'project',
+    });
+  });
+
+  it('saves lastOpenedWorkspace setting when openCodeWorkspace is called', async () => {
+    const workspaceContent = JSON.stringify({
+      folders: [
+        { path: 'packages/app', name: 'App' },
+        { path: 'packages/core', name: 'Core' },
+      ],
+    });
+    vi.mocked(window.electron.workspaceReadFile).mockResolvedValueOnce({
+      content: workspaceContent,
+      filePath: '/root/project.code-workspace',
+      error: null,
+      found: true,
+      isBinary: false,
+    });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.openCodeWorkspace('/root/project.code-workspace');
+    });
+
+    expect(success).toBe(true);
+    expect(window.electron.setSetting).toHaveBeenCalledWith('lastOpenedWorkspace', {
+      path: '/root/packages/app',
+      type: 'code-workspace',
+      workspaceFilePath: '/root/project.code-workspace',
+      folders: [
+        { path: '/root/packages/app', name: 'App' },
+        { path: '/root/packages/core', name: 'Core' },
+      ],
+      name: 'App',
+    });
+  });
+
+  it('restores lastOpenedWorkspace from electron settings on mount when local storage is empty', async () => {
+    vi.mocked(window.electron.getSetting).mockResolvedValueOnce({
+      path: '/restored/workspace',
+      type: 'folder',
+      folders: [{ path: '/restored/workspace', name: 'workspace' }],
+      name: 'workspace',
+    });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await vi.waitFor(() => {
+      expect(result.current.workspacePath).toBe('/restored/workspace');
+      expect(result.current.workspaceFolders).toEqual([
+        { path: '/restored/workspace', name: 'workspace' },
+      ]);
+    });
   });
 
   it('clamps chatWidth to min/max boundaries', () => {

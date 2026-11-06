@@ -4837,5 +4837,47 @@
   },
   "contextXray.autoCompactionPending": {
     "defaultMessage": "Превышен порог автокомпактизации: разговор будет сжат перед отправкой следующего запроса."
+  },
+  "thinkingEffortButton.highDesc": {
+    "defaultMessage": "Глубокие рассуждения для сложных инженерных задач"
+  },
+  "thinkingEffortButton.highLabel": {
+    "defaultMessage": "Высокий"
+  },
+  "thinkingEffortButton.labelThinking": {
+    "defaultMessage": "Мышление: {level}"
+  },
+  "thinkingEffortButton.lowDesc": {
+    "defaultMessage": "Минимальные размышления, самый быстрый ответ"
+  },
+  "thinkingEffortButton.lowLabel": {
+    "defaultMessage": "Низкий"
+  },
+  "thinkingEffortButton.maxDesc": {
+    "defaultMessage": "Максимальная глубина рассуждений без ограничений"
+  },
+  "thinkingEffortButton.maxLabel": {
+    "defaultMessage": "Максимальный"
+  },
+  "thinkingEffortButton.mediumDesc": {
+    "defaultMessage": "Умеренные размышления для сбалансированных задач"
+  },
+  "thinkingEffortButton.mediumLabel": {
+    "defaultMessage": "Средний"
+  },
+  "thinkingEffortButton.offDesc": {
+    "defaultMessage": "Без расширенных размышлений"
+  },
+  "thinkingEffortButton.offLabel": {
+    "defaultMessage": "Выключено"
+  },
+  "thinkingEffortButton.subtitle": {
+    "defaultMessage": "Управление глубиной рассуждений модели перед ответом"
+  },
+  "thinkingEffortButton.title": {
+    "defaultMessage": "Глубина размышлений"
+  },
+  "thinkingEffortButton.tooltip": {
+    "defaultMessage": "Глубина размышлений: {level} (⌥T для переключения)"
   }
 }

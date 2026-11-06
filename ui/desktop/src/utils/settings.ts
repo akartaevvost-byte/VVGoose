@@ -3,6 +3,11 @@ export type RecentModel = {
   model: string;
 };
 
+export interface LastSelectedModelAndProvider {
+  provider: string;
+  model: string;
+}
+
 export interface ExternalBackendConfig {
   enabled: boolean;
   url: string;
@@ -36,6 +41,22 @@ export type LanguageSetting =
 
 export type ShowThinking = 'always' | 'collapsed' | 'never';
 
+export type VisibleModels = Record<string, string[]>;
+export type CustomModels = Record<string, string[]>;
+
+export interface LastOpenedWorkspaceFolder {
+  path: string;
+  name: string;
+}
+
+export interface LastOpenedWorkspace {
+  path: string;
+  type: 'folder' | 'code-workspace';
+  folders?: LastOpenedWorkspaceFolder[];
+  workspaceFilePath?: string;
+  name?: string;
+}
+
 export interface Settings {
   // Desktop app settings
   showMenuBarIcon: boolean;
@@ -58,6 +79,10 @@ export interface Settings {
   seenAnnouncementIds: string[];
   recentModels: RecentModel[];
   showThinking: ShowThinking;
+  visibleModels?: VisibleModels;
+  customModels?: CustomModels;
+  lastOpenedWorkspace?: LastOpenedWorkspace | null;
+  lastSelectedModelAndProvider?: LastSelectedModelAndProvider | null;
 }
 
 export type SettingKey = keyof Settings;
@@ -100,6 +125,10 @@ export const defaultSettings: Settings = {
   seenAnnouncementIds: [],
   recentModels: [],
   showThinking: 'collapsed',
+  visibleModels: {},
+  customModels: {},
+  lastOpenedWorkspace: null,
+  lastSelectedModelAndProvider: null,
 };
 
 export function getKeyboardShortcuts(settings: Settings): KeyboardShortcuts {

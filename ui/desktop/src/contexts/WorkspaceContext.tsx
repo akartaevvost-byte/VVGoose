@@ -18,6 +18,7 @@ import { resolveAcpPermissionRequest } from '../acp/permissionRequests';
 import { parseCodeWorkspace } from '../utils/codeWorkspace';
 import { AppEvents } from '../constants/events';
 import { toastError } from '../toasts';
+import type { LastOpenedWorkspace } from '../utils/settings';
 
 interface WorkspaceContextType {
   workspacePath: string;
@@ -79,9 +80,13 @@ const DEFAULT_EXPLORER_WIDTH = 280;
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [workspacePath, setWorkspacePathState] = useState<string>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) || '';
-    } catch {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return saved;
+      const appWorkingDir = window.appConfig?.get('GOOSE_WORKING_DIR') as string;
+      if (appWorkingDir) return appWorkingDir;
       return '';
+    } catch {
+      return (window.appConfig?.get('GOOSE_WORKING_DIR') as string) || '';
     }
   });
 
@@ -92,7 +97,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-      const singlePath = localStorage.getItem(STORAGE_KEY) || '';
+      const singlePath =
+        localStorage.getItem(STORAGE_KEY) ||
+        (window.appConfig?.get('GOOSE_WORKING_DIR') as string) ||
+        '';
       if (singlePath) {
         const name = singlePath.split(/[/\\]/).filter(Boolean).pop() || singlePath;
         return [{ path: singlePath, name }];
@@ -110,6 +118,44 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch {
       // Ignore storage errors
     }
+  }, []);
+
+  // Restore saved lastOpenedWorkspace on mount if available
+  useEffect(() => {
+    if (!window.electron?.getSetting) return;
+    window.electron
+      .getSetting('lastOpenedWorkspace')
+      .then((saved) => {
+        if (!saved || !saved.path) return;
+        setWorkspacePathState((prev) => {
+          if (!prev) {
+            try {
+              localStorage.setItem(STORAGE_KEY, saved.path);
+            } catch {
+              // Ignore
+            }
+            return saved.path;
+          }
+          return prev;
+        });
+        if (saved.folders && saved.folders.length > 0) {
+          setWorkspaceFoldersState((prev) => {
+            if (
+              prev.length === 0 ||
+              (saved.type === 'code-workspace' && prev.length <= 1 && saved.folders!.length > 1)
+            ) {
+              try {
+                localStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(saved.folders));
+              } catch {
+                // Ignore
+              }
+              return saved.folders!;
+            }
+            return prev;
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -306,6 +352,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setPendingDiff(null);
   }, []);
 
+  const saveLastOpenedWorkspace = useCallback((workspace: LastOpenedWorkspace) => {
+    if (window.electron?.setSetting) {
+      window.electron.setSetting('lastOpenedWorkspace', workspace).catch(() => {});
+    }
+  }, []);
+
   const setWorkspacePath = useCallback(
     (newPath: string) => {
       // Tabs from the previous root can no longer be saved under the new one
@@ -322,9 +374,15 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       if (newPath) {
         addRecentWorkspace(newPath, undefined, false, undefined, folders);
+        saveLastOpenedWorkspace({
+          path: newPath,
+          type: 'folder',
+          folders,
+          name: folders[0]?.name,
+        });
       }
     },
-    [addRecentWorkspace, closeAllFiles, setWorkspaceFolders]
+    [addRecentWorkspace, closeAllFiles, saveLastOpenedWorkspace, setWorkspaceFolders]
   );
 
   const openCodeWorkspace = useCallback(
@@ -344,6 +402,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               // Ignore
             }
             addRecentWorkspace(parsed.rootPath, parsed.name, true, workspaceFilePath, parsed.folders);
+            saveLastOpenedWorkspace({
+              path: parsed.rootPath,
+              type: 'code-workspace',
+              workspaceFilePath,
+              folders: parsed.folders,
+              name: parsed.name,
+            });
             refreshWorkspace();
             return true;
           }
@@ -361,7 +426,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return false;
       }
     },
-    [addRecentWorkspace, closeAllFiles, refreshWorkspace, setWorkspaceFolders]
+    [addRecentWorkspace, closeAllFiles, refreshWorkspace, saveLastOpenedWorkspace, setWorkspaceFolders]
   );
 
   const openRecentWorkspace = useCallback(
@@ -372,12 +437,18 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setWorkspacePath(workspace.path);
         if (workspace.folders && workspace.folders.length > 0) {
           setWorkspaceFolders(workspace.folders);
+          saveLastOpenedWorkspace({
+            path: workspace.path,
+            type: 'folder',
+            folders: workspace.folders,
+            name: workspace.name,
+          });
         }
         setSelectedFile(null);
         refreshWorkspace();
       }
     },
-    [openCodeWorkspace, setWorkspacePath, setWorkspaceFolders, refreshWorkspace]
+    [openCodeWorkspace, saveLastOpenedWorkspace, setWorkspacePath, setWorkspaceFolders, refreshWorkspace]
   );
 
   // Listen for file changes from Electron main process with debounce

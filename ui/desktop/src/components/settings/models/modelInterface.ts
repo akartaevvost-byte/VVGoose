@@ -12,6 +12,7 @@ export default interface Model {
   subtext?: string; // goes below model name if not the provider
   context_limit?: number; // optional context limit override
   reasoning?: boolean; // optional reasoning/thinking support metadata
+  vision?: boolean; // optional vision/multimodal support metadata
   request_params?: Record<string, unknown> & { thinking_effort?: ThinkingEffort }; // provider-specific request parameters
 }
 

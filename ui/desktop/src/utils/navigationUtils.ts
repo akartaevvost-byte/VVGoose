@@ -20,6 +20,7 @@ export type View =
   | 'permission';
 
 export type ViewOptions = {
+  section?: string;
   showEnvVars?: boolean;
   deepLinkConfig?: unknown;
   error?: string;

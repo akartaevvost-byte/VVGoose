@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, type RenderOptions, screen } from '@testing-library/react';
+import { fireEvent, render, type RenderOptions, screen, waitFor } from '@testing-library/react';
 import ModelsBottomBar from './ModelsBottomBar';
 import { IntlTestWrapper } from '../../../../i18n/test-utils';
 
@@ -13,12 +13,32 @@ let mockCurrentModel: string | null = 'config-model';
 let mockCurrentProvider: string | null = 'config-provider';
 const mockGetProviders = vi.fn();
 const mockOnModelChanged = vi.fn();
-const mockPreventCloseAutoFocus = vi.fn();
+const mockChangeModel = vi.fn().mockResolvedValue(true);
+const mockSetView = vi.fn();
+
+const { mockActiveProviders } = vi.hoisted(() => ({
+  mockActiveProviders: [
+    {
+      name: 'config-provider',
+      is_configured: true,
+      is_available: true,
+      metadata: {
+        display_name: 'Config Provider',
+        default_model: 'config-model',
+        known_models: [
+          { name: 'config-model', context_limit: 128000 },
+          { name: 'extra-model', context_limit: 200000, reasoning: true },
+        ],
+      },
+    },
+  ],
+}));
 
 vi.mock('../../../ModelAndProviderContext', () => ({
   useModelAndProvider: () => ({
     currentModel: mockCurrentModel,
     currentProvider: mockCurrentProvider,
+    changeModel: mockChangeModel,
   }),
 }));
 
@@ -28,17 +48,40 @@ vi.mock('../../../ConfigContext', () => ({
   }),
 }));
 
+vi.mock('../../../../acp/providers', () => ({
+  acpListProviderDetails: vi.fn().mockResolvedValue(mockActiveProviders),
+  acpReadThinkingEffort: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('../modelInterface', () => ({
   getProviderMetadata: vi.fn().mockResolvedValue({ display_name: 'Config Provider' }),
   fetchModelReasoning: vi.fn().mockResolvedValue(null),
+  fetchModelsForProviders: vi.fn().mockResolvedValue([
+    {
+      provider: mockActiveProviders[0],
+      models: [
+        { name: 'config-model', provider: 'config-provider', context_limit: 128000 },
+        {
+          name: 'extra-model',
+          provider: 'config-provider',
+          context_limit: 200000,
+          reasoning: true,
+        },
+      ],
+      error: null,
+      warning: null,
+    },
+  ]),
 }));
 
 vi.mock('../predefinedModelsUtils', () => ({
   getModelDisplayName: (model: string) => `Display ${model}`,
+  shouldShowPredefinedModels: () => false,
+  getPredefinedModelsFromEnv: () => [],
 }));
 
-vi.mock('../../../ui/dropdown-menu', () => ({
-  DropdownMenu: ({
+vi.mock('../../../ui/popover', () => ({
+  Popover: ({
     children,
     open,
     onOpenChange,
@@ -52,29 +95,12 @@ vi.mock('../../../ui/dropdown-menu', () => ({
       {children}
     </div>
   ),
-  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuContent: ({
-    children,
-    onCloseAutoFocus,
-  }: {
-    children: React.ReactNode;
-    onCloseAutoFocus?: (event: Pick<Event, 'preventDefault'>) => void;
-  }) => (
-    <div>
-      <button onClick={() => onCloseAutoFocus?.({ preventDefault: mockPreventCloseAutoFocus })}>
-        Complete model menu close
-      </button>
-      {children}
-    </div>
+  PopoverTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverContent: ({ children, ...props }: React.ComponentProps<'div'>) => (
+    <div {...props}>{children}</div>
   ),
-  DropdownMenuItem: ({
-    children,
-    onSelect,
-  }: {
-    children: React.ReactNode;
-    onSelect?: () => void;
-  }) => <button onClick={onSelect}>{children}</button>,
-  DropdownMenuSeparator: () => null,
+  PopoverClose: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverAnchor: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
 vi.mock('../subcomponents/SwitchModelModal', () => ({
@@ -82,7 +108,7 @@ vi.mock('../subcomponents/SwitchModelModal', () => ({
 }));
 
 vi.mock('../../localInference/ModelSettingsPanel', () => ({
-  ModelSettingsPanel: () => null,
+  ModelSettingsPanel: () => <div data-testid="local-model-settings-panel" />,
 }));
 
 vi.mock('../../../ui/scroll-area', () => ({
@@ -102,7 +128,7 @@ describe('ModelsBottomBar', () => {
       <ModelsBottomBar
         sessionId="session-123"
         dropdownRef={createDropdownRef()}
-        setView={vi.fn()}
+        setView={mockSetView}
         onModelChanged={mockOnModelChanged}
         sessionLoaded={false}
       />
@@ -116,7 +142,7 @@ describe('ModelsBottomBar', () => {
       <ModelsBottomBar
         sessionId="session-123"
         dropdownRef={createDropdownRef()}
-        setView={vi.fn()}
+        setView={mockSetView}
         sessionModel="session-model"
         sessionProvider="session-provider"
         onModelChanged={mockOnModelChanged}
@@ -133,7 +159,7 @@ describe('ModelsBottomBar', () => {
       <ModelsBottomBar
         sessionId={null}
         dropdownRef={createDropdownRef()}
-        setView={vi.fn()}
+        setView={mockSetView}
         onModelChanged={mockOnModelChanged}
       />
     );
@@ -142,14 +168,14 @@ describe('ModelsBottomBar', () => {
     expect(screen.queryByTestId('model-loading-state')).not.toBeInTheDocument();
   });
 
-  it('opens model overlays after the menu closes with the appropriate focus behavior', () => {
+  it('opens quick model picker and renders pinned models', async () => {
     renderWithIntl(
       <ModelsBottomBar
         sessionId="session-123"
         dropdownRef={createDropdownRef()}
-        setView={vi.fn()}
-        sessionModel="local-model"
-        sessionProvider="local"
+        setView={mockSetView}
+        sessionModel="config-model"
+        sessionProvider="config-provider"
         onModelChanged={mockOnModelChanged}
         sessionLoaded={true}
       />
@@ -158,26 +184,117 @@ describe('ModelsBottomBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open model menu' }));
     expect(screen.getByTestId('model-menu')).toHaveAttribute('data-open', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Local Model Settings' }));
-    expect(screen.getByTestId('model-menu')).toHaveAttribute('data-open', 'false');
-    expect(
-      screen.queryByRole('heading', { name: 'Local Model Settings — Display local-model' })
-    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('quick-model-picker-content')).toBeInTheDocument();
+      expect(screen.getByTestId('pinned-models-section')).toBeInTheDocument();
+      expect(screen.getByTestId('model-item-config-model')).toBeInTheDocument();
+    });
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete model menu close' }));
-    expect(
-      screen.getByRole('heading', { name: 'Local Model Settings — Display local-model' })
-    ).toBeInTheDocument();
-    expect(mockPreventCloseAutoFocus).not.toHaveBeenCalled();
+  it('filters models using the search input', async () => {
+    renderWithIntl(
+      <ModelsBottomBar
+        sessionId="session-123"
+        dropdownRef={createDropdownRef()}
+        setView={mockSetView}
+        sessionModel="config-model"
+        sessionProvider="config-provider"
+        onModelChanged={mockOnModelChanged}
+        sessionLoaded={true}
+      />
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: '×' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open model menu' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Change Model' }));
-    expect(screen.getByTestId('model-menu')).toHaveAttribute('data-open', 'false');
-    expect(screen.queryByTestId('switch-model-modal')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete model menu close' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('model-picker-search-input')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByTestId('model-picker-search-input');
+    fireEvent.change(searchInput, { target: { value: 'extra' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-item-extra-model')).toBeInTheDocument();
+      expect(screen.queryByTestId('model-item-config-model')).not.toBeInTheDocument();
+    });
+  });
+
+  it('selects a model in one click and applies it to chat', async () => {
+    renderWithIntl(
+      <ModelsBottomBar
+        sessionId="session-123"
+        dropdownRef={createDropdownRef()}
+        setView={mockSetView}
+        sessionModel="config-model"
+        sessionProvider="config-provider"
+        onModelChanged={mockOnModelChanged}
+        sessionLoaded={true}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open model menu' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-item-config-model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('model-item-config-model'));
+
+    await waitFor(() => {
+      expect(mockChangeModel).toHaveBeenCalledWith('session-123', {
+        name: 'config-model',
+        provider: 'config-provider',
+      });
+      expect(mockOnModelChanged).toHaveBeenCalledWith({
+        model: 'config-model',
+        provider: 'config-provider',
+      });
+    });
+  });
+
+  it('opens visible models settings when configure button is clicked', async () => {
+    renderWithIntl(
+      <ModelsBottomBar
+        sessionId="session-123"
+        dropdownRef={createDropdownRef()}
+        setView={mockSetView}
+        sessionModel="config-model"
+        sessionProvider="config-provider"
+        onModelChanged={mockOnModelChanged}
+        sessionLoaded={true}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open model menu' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-configure-visible-models')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('btn-configure-visible-models'));
+    expect(mockSetView).toHaveBeenCalledWith('settings', { section: 'models' });
+  });
+
+  it('opens more options switch model modal when clicked', async () => {
+    renderWithIntl(
+      <ModelsBottomBar
+        sessionId="session-123"
+        dropdownRef={createDropdownRef()}
+        setView={mockSetView}
+        sessionModel="config-model"
+        sessionProvider="config-provider"
+        onModelChanged={mockOnModelChanged}
+        sessionLoaded={true}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open model menu' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-more-options')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('btn-more-options'));
     expect(screen.getByTestId('switch-model-modal')).toBeInTheDocument();
-    expect(mockPreventCloseAutoFocus).toHaveBeenCalledOnce();
   });
 });

@@ -158,7 +158,9 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
-        const focusInEditor = editorRootRef.current?.contains(document.activeElement) === true;
+        const activeEl = document.activeElement;
+        const focusInEditor =
+          !activeEl || activeEl === document.body || editorRootRef.current?.contains(activeEl) === true;
         if (focusInEditor && activeFile) {
           e.preventDefault();
           closeFile(activeFile.path);

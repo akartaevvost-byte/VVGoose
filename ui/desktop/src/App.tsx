@@ -37,7 +37,7 @@ import LauncherView from './components/LauncherView';
 
 import 'react-toastify/dist/ReactToastify.css';
 import { useConfig } from './components/ConfigContext';
-import { ModelAndProviderProvider } from './components/ModelAndProviderContext';
+import { ModelAndProviderProvider, useModelAndProvider } from './components/ModelAndProviderContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { FeaturesProvider } from './contexts/FeaturesContext';
 import PermissionSettingsView from './components/settings/permission/PermissionSetting';
@@ -99,6 +99,7 @@ export const PairRouteWrapper = ({
   ) => void;
 }) => {
   const { extensionsList } = useConfig();
+  const { currentModel, currentProvider } = useModelAndProvider();
   const location = useLocation();
   const routeState =
     (location.state as PairRouteState) || (window.history.state as PairRouteState) || {};
@@ -127,6 +128,8 @@ export const PairRouteWrapper = ({
             recipeDeeplink: recipeDeeplinkFromConfig,
             recipeId: recipeIdFromConfig,
             allExtensions: extensionsList,
+            provider: currentProvider ?? undefined,
+            model: currentModel ?? undefined,
           });
           const sessionInitialMessage = resolveSessionInitialMessage(newSession, initialMessage);
 

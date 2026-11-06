@@ -1,4 +1,16 @@
 export const getInitialWorkingDir = (): string => {
+  const requestDir = window.appConfig?.get('REQUEST_DIR') as string | undefined;
+  if (requestDir?.trim()) {
+    return requestDir.trim();
+  }
+  try {
+    const savedPath = localStorage.getItem('goose_workspace_path');
+    if (savedPath?.trim()) {
+      return savedPath.trim();
+    }
+  } catch {
+    // Ignore storage errors
+  }
   return (window.appConfig?.get('GOOSE_WORKING_DIR') as string) ?? '';
 };
 
@@ -18,7 +30,17 @@ export const getInitialWorkingDir = (): string => {
  * settings-mode backends require the window-bound backend to still match.
  */
 export const getEffectiveWorkingDir = async (inheritedWorkingDir?: string): Promise<string> => {
-  const initial = inheritedWorkingDir ?? getInitialWorkingDir();
+  let initial = inheritedWorkingDir || getInitialWorkingDir();
+  if (!initial) {
+    try {
+      const lastWorkspace = await window.electron?.getSetting?.('lastOpenedWorkspace');
+      if (lastWorkspace?.path?.trim()) {
+        initial = lastWorkspace.path.trim();
+      }
+    } catch {
+      // Settings unavailable; fall back to remembered directory.
+    }
+  }
   const boundUrl = window.appConfig?.get('GOOSE_EXTERNAL_BACKEND_URL') as string | undefined;
   const source = window.appConfig?.get('GOOSE_EXTERNAL_BACKEND_SOURCE') as string | undefined;
   if (window.appConfig?.get('GOOSE_EXTERNAL_BACKEND') !== true || !boundUrl) {

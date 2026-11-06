@@ -453,7 +453,10 @@ export const SwitchModelModal = ({
   useEffect(() => {
     if (!usePredefinedModels || !currentModel) return;
     const models = getPredefinedModelsFromEnv();
-    const matchingModel = models.find((m) => m.name === currentModel);
+    const matchingModel =
+      models.find(
+        (m) => m.name === currentModel && (!currentProvider || m.provider === currentProvider)
+      ) ?? models.find((m) => m.name === currentModel);
     if (matchingModel) {
       setSelectedPredefinedModel(matchingModel);
       resolveSelectedModelReasoning(
@@ -462,7 +465,7 @@ export const SwitchModelModal = ({
         matchingModel.reasoning
       );
     }
-  }, [usePredefinedModels, currentModel, resolveSelectedModelReasoning]);
+  }, [usePredefinedModels, currentModel, currentProvider, resolveSelectedModelReasoning]);
 
   // For manual mode: one-time sync of provider/model when session data
   // arrives after the modal has already mounted. Uses a ref so it only

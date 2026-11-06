@@ -190,6 +190,10 @@ type ElectronAPI = {
     theme: string;
     tokensUpdated?: boolean;
   }) => void;
+  broadcastModelAndProviderChange?: (data: { provider: string; model: string }) => void;
+  onModelAndProviderChange?: (
+    callback: (data: { provider: string; model: string }) => void
+  ) => () => void;
   openExternal: (url: string) => Promise<OpenExternalUrlResult>;
   // Update-related functions
   getVersion: () => string;
@@ -349,6 +353,18 @@ const electronAPI: ElectronAPI = {
     tokensUpdated?: boolean;
   }) => {
     ipcRenderer.send('broadcast-theme-change', themeData);
+  },
+  broadcastModelAndProviderChange: (data: { provider: string; model: string }) => {
+    ipcRenderer.send('broadcast-model-and-provider-change', data);
+  },
+  onModelAndProviderChange: (callback: (data: { provider: string; model: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+      callback(data as { provider: string; model: string });
+    };
+    ipcRenderer.on('model-and-provider-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('model-and-provider-changed', handler);
+    };
   },
   openExternal: (url: string): Promise<OpenExternalUrlResult> => {
     return ipcRenderer.invoke('open-external', url);

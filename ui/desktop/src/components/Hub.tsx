@@ -7,7 +7,7 @@
  * lives there.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation } from 'react-router';
 import { defineMessages, useIntl } from '../i18n';
 import { AppEvents } from '../constants/events';
@@ -18,6 +18,8 @@ import 'react-toastify/dist/ReactToastify.css';
 import { View, ViewOptions } from '../utils/navigationUtils';
 import { useConfig } from './ConfigContext';
 import { getEffectiveWorkingDir, getInitialWorkingDir } from '../utils/workingDir';
+import { WorkspaceContext } from '../contexts/WorkspaceContext';
+import { ModelAndProviderContext } from './ModelAndProviderContext';
 import { createSession } from '../sessions';
 import LoadingGoose from './LoadingGoose';
 import { UserInput } from '../types/message';
@@ -63,8 +65,15 @@ export default function Hub({
   const intl = useIntl();
   const { state } = useLocation();
   const initialWorkingDir = (state as { workingDir?: string } | null)?.workingDir;
+  const workspaceContext = useContext(WorkspaceContext);
+  const activeWorkspacePath = workspaceContext?.workspacePath;
   const { extensionsList } = useConfig();
-  const [workingDir, setWorkingDir] = useState(initialWorkingDir ?? getInitialWorkingDir());
+  const modelAndProvider = useContext(ModelAndProviderContext);
+  const currentModel = modelAndProvider?.currentModel;
+  const currentProvider = modelAndProvider?.currentProvider;
+  const [workingDir, setWorkingDir] = useState(
+    initialWorkingDir ?? (activeWorkspacePath || getInitialWorkingDir())
+  );
   const userSelectedWorkingDirRef = useRef(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [liveVoiceAvailability, setLiveVoiceAvailability] =
@@ -78,13 +87,13 @@ export default function Hub({
   // creation, so a configured remote directory may have changed since then.
   useEffect(() => {
     let active = true;
-    void getEffectiveWorkingDir(initialWorkingDir).then((dir) => {
-      if (active && !userSelectedWorkingDirRef.current) setWorkingDir(dir);
+    void getEffectiveWorkingDir(initialWorkingDir || activeWorkspacePath).then((dir) => {
+      if (active && !userSelectedWorkingDirRef.current && dir) setWorkingDir(dir);
     });
     return () => {
       active = false;
     };
-  }, [initialWorkingDir]);
+  }, [initialWorkingDir, activeWorkspacePath]);
 
   useEffect(() => {
     let requestGeneration = 0;
@@ -150,17 +159,21 @@ export default function Hub({
     try {
       // A draft exists only once the user has opened the picker, so its absence is
       // "not specified" while an empty draft is "start with no extensions".
-      const sessionOptions = nextChatExtensionDraft
-        ? {
-            extensionConfigs: selectNextChatExtensions(extensionsList, nextChatExtensionDraft),
-          }
-        : { allExtensions: extensionsList };
+      const sessionOptions = {
+        ...(nextChatExtensionDraft
+          ? {
+              extensionConfigs: selectNextChatExtensions(extensionsList, nextChatExtensionDraft),
+            }
+          : { allExtensions: extensionsList }),
+        ...(currentProvider ? { provider: currentProvider } : {}),
+        ...(currentModel ? { model: currentModel } : {}),
+      };
 
       // Resolve the effective directory at submit time: the IPC lookup may still
       // be pending when the user submits, and an explicit pick must win.
       const dir = userSelectedWorkingDirRef.current
         ? workingDir
-        : await getEffectiveWorkingDir(initialWorkingDir);
+        : await getEffectiveWorkingDir(initialWorkingDir || activeWorkspacePath);
       const session = await createSession(dir, sessionOptions);
       setNextChatExtensionDraft(null);
       return session;

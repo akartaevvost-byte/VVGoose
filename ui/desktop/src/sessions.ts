@@ -13,6 +13,8 @@ import { decodeRecipe } from './acp/recipe';
 import { scanRecipe, type Recipe } from './recipe';
 import { listSavedRecipes } from './recipe/recipe_management';
 import { requestRecipeConsent } from './recipe/consent';
+import { acpReadDefaults, acpSetSessionProviderModel } from './acp/providers';
+import { acpChatSessionActions } from './acp/chatSessionStore';
 
 export function getSessionDisplayName(session: Session): string {
   if (session.user_set_name) {
@@ -24,11 +26,13 @@ export function getSessionDisplayName(session: Session): string {
   return session.name;
 }
 
-interface CreateSessionOptions {
+export interface CreateSessionOptions {
   recipeDeeplink?: string;
   recipeId?: string;
   extensionConfigs?: ExtensionConfig[];
   allExtensions?: FixedExtensionEntry[];
+  provider?: string;
+  model?: string;
 }
 
 /**
@@ -121,11 +125,68 @@ async function createAcpSession(
       }
     }
     const gooseExtensions = await resolveGooseExtensions(selectedExtensionConfigs(options));
-    return await acpChatSessionController.createSession(workingDir, gooseExtensions, {
+    const session = await acpChatSessionController.createSession(workingDir, gooseExtensions, {
       recipeId: options?.recipeId,
       recipeDeeplink: options?.recipeDeeplink,
       recipeParameterScopeId: configuredParameterScope?.id,
     });
+
+    let targetProvider = options?.provider;
+    let targetModel = options?.model;
+
+    if (!targetProvider || !targetModel) {
+      if (!options?.recipeId && !options?.recipeDeeplink) {
+        try {
+          if (window.electron?.getSetting) {
+            const saved = await window.electron.getSetting('lastSelectedModelAndProvider');
+            if (saved?.provider && saved?.model) {
+              targetProvider = targetProvider ?? saved.provider;
+              targetModel = targetModel ?? saved.model;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        if (!targetProvider || !targetModel) {
+          try {
+            const defaults = await acpReadDefaults();
+            targetProvider = targetProvider ?? defaults.providerId ?? undefined;
+            targetModel = targetModel ?? defaults.modelId ?? undefined;
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+
+    if (
+      targetProvider &&
+      targetModel &&
+      (session.provider_name !== targetProvider ||
+        session.model_config?.model_name !== targetModel)
+    ) {
+      try {
+        const applied = await acpSetSessionProviderModel(
+          session.id,
+          targetProvider,
+          targetModel
+        );
+        session.provider_name = applied.providerId ?? targetProvider;
+        if (session.model_config) {
+          session.model_config.model_name = applied.modelId ?? targetModel;
+        } else {
+          session.model_config = {
+            model_name: applied.modelId ?? targetModel,
+            toolshim: false,
+          };
+        }
+        acpChatSessionActions.setSessionMetadata(session.id, session);
+      } catch (error) {
+        console.error('Failed to set session provider and model on new session:', error);
+      }
+    }
+
+    return session;
   } finally {
     configuredParameterScope?.finish();
   }
@@ -142,11 +203,7 @@ export async function startNewSession(
   initialText: string | undefined,
   setView: setViewType,
   workingDir: string,
-  options?: {
-    recipeDeeplink?: string;
-    recipeId?: string;
-    allExtensions?: FixedExtensionEntry[];
-  }
+  options?: CreateSessionOptions
 ): Promise<Session> {
   const session = await createSession(workingDir, options);
   window.dispatchEvent(new CustomEvent(AppEvents.SESSION_CREATED, { detail: { session } }));

@@ -11,6 +11,7 @@ import { LocalMessageStorage } from '../utils/localMessageStorage';
 import { DirSwitcher } from './bottom_menu/DirSwitcher';
 import { GitBranchIndicator } from './GitBranchIndicator';
 import ModelsBottomBar from './settings/models/bottom_bar/ModelsBottomBar';
+import ThinkingEffortButton from './ThinkingEffortButton';
 import { BottomMenuExtensionSelection } from './bottom_menu/BottomMenuExtensionSelection';
 import { cn } from '../utils';
 import { useModelAndProvider } from './ModelAndProviderContext';
@@ -669,7 +670,9 @@ export default function ChatInput({
 
       // Priority 1: Check predefined models from environment
       const predefinedModels = getPredefinedModelsFromEnv();
-      const predefinedModel = predefinedModels.find((m) => m.name === model);
+      const predefinedModel =
+        predefinedModels.find((m) => m.name === model && (!provider || m.provider === provider)) ??
+        predefinedModels.find((m) => m.name === model);
       if (predefinedModel?.context_limit) {
         setTokenLimit(predefinedModel.context_limit);
         return;
@@ -1710,6 +1713,13 @@ export default function ChatInput({
             />
           </div>
         </Tooltip>
+
+        <ThinkingEffortButton
+          sessionId={sessionId}
+          currentProvider={effectiveProvider}
+          currentModel={effectiveModel}
+          isNarrow={isBottomBarNarrow}
+        />
 
         {/* Left: working directory (leaf folder name only) */}
         {!isBottomBarNarrow && (

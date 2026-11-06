@@ -5,6 +5,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import Hub from './Hub';
+import { WorkspaceContext } from '../contexts/WorkspaceContext';
 import { IntlTestWrapper } from '../i18n/test-utils';
 import { createSession } from '../sessions';
 import { UserInput } from '../types/message';
@@ -131,6 +132,61 @@ describe('Hub', () => {
       });
     }
   );
+
+  it('initializes with active workspace from WorkspaceContext when initialWorkingDir is not provided', async () => {
+    const mockWorkspaceContext = {
+      workspacePath: '/my/active/workspace',
+      setWorkspacePath: vi.fn(),
+      workspaceFolders: [],
+      setWorkspaceFolders: vi.fn(),
+      selectedFile: null,
+      setSelectedFile: vi.fn(),
+      openFolderDialog: vi.fn(),
+      openWorkspaceFileDialog: vi.fn(),
+      openCodeWorkspace: vi.fn(),
+      recentWorkspaces: [],
+      openRecentWorkspace: vi.fn(),
+      refreshTrigger: 0,
+      refreshWorkspace: vi.fn(),
+      openFiles: [],
+      activeFilePath: null,
+      activeFile: null,
+      setActiveFilePath: vi.fn(),
+      openFile: vi.fn(),
+      closeFile: vi.fn(),
+      closeAllFiles: vi.fn(),
+      saveFile: vi.fn(),
+      saveActiveFile: vi.fn(),
+      updateFileContent: vi.fn(),
+      isChatVisible: true,
+      setIsChatVisible: vi.fn(),
+      isEditorVisible: true,
+      setIsEditorVisible: vi.fn(),
+      chatWidth: 420,
+      setChatWidth: vi.fn(),
+      isExplorerVisible: true,
+      setIsExplorerVisible: vi.fn(),
+      explorerWidth: 280,
+      setExplorerWidth: vi.fn(),
+      pendingDiff: null,
+      setPendingDiff: vi.fn(),
+      proposeDiff: vi.fn(),
+      acceptPendingDiff: vi.fn(),
+      rejectPendingDiff: vi.fn(),
+    };
+
+    render(
+      <IntlTestWrapper>
+        <MemoryRouter initialEntries={[{ pathname: '/' }]}>
+          <WorkspaceContext.Provider value={mockWorkspaceContext}>
+            <Hub setView={vi.fn()} draftRef={{ current: '' }} liveVoice={liveVoice} />
+          </WorkspaceContext.Provider>
+        </MemoryRouter>
+      </IntlTestWrapper>
+    );
+
+    await waitFor(() => expect(captured.chatInput?.workingDir).toBe('/my/active/workspace'));
+  });
 
   it('requests Live voice availability again after ACP recovers', async () => {
     let recoveryChanged: ((recovering: boolean) => void) | undefined;

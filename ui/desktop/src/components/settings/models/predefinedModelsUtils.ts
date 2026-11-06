@@ -17,14 +17,20 @@ export function shouldShowPredefinedModels(): boolean {
   return getPredefinedModelsFromEnv().length > 0;
 }
 
-export function getModelDisplayName(modelName: string): string {
+export function getModelDisplayName(modelName: string, providerName?: string): string {
   const predefinedModels = getPredefinedModelsFromEnv();
-  const matchingModel = predefinedModels.find((model) => model.name === modelName);
+  const matchingModel =
+    predefinedModels.find(
+      (model) => model.name === modelName && (!providerName || model.provider === providerName)
+    ) ?? predefinedModels.find((model) => model.name === modelName);
   return matchingModel?.alias || modelName;
 }
 
-export function getProviderDisplayName(modelName: string): string {
+export function getProviderDisplayName(modelName: string, providerName?: string): string {
   const predefinedModels = getPredefinedModelsFromEnv();
-  const matchingModel = predefinedModels.find((model) => model.name === modelName);
+  const matchingModel =
+    predefinedModels.find(
+      (model) => model.name === modelName && (!providerName || model.provider === providerName)
+    ) ?? predefinedModels.find((model) => model.name === modelName);
   return matchingModel?.subtext || '';
 }

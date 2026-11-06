@@ -72,6 +72,9 @@ const mockSettings: Record<string, unknown> = {
   showPricing: true,
   seenAnnouncementIds: [],
   showThinking: 'collapsed',
+  visibleModels: {},
+  customModels: {},
+  lastSelectedModelAndProvider: null,
 };
 
 // Mock window.electron for renderer process
@@ -84,6 +87,8 @@ Object.defineProperty(window, 'electron', {
       mockSettings[key] = value;
       return Promise.resolve();
     }),
+    broadcastModelAndProviderChange: vi.fn(),
+    onModelAndProviderChange: vi.fn(() => () => {}),
     reloadApp: vi.fn(),
     showMessageBox: vi.fn(() => Promise.resolve({ response: 0 })),
     getIsFullScreen: vi.fn(() => Promise.resolve(false)),

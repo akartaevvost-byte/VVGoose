@@ -29,6 +29,15 @@
   "appLayout.openNavigation": {
     "defaultMessage": "Open navigation"
   },
+  "appLayout.toggleChat": {
+    "defaultMessage": "Toggle chat"
+  },
+  "appLayout.toggleEditor": {
+    "defaultMessage": "Toggle editor"
+  },
+  "appLayout.toggleExplorer": {
+    "defaultMessage": "Toggle File Explorer"
+  },
   "appsView.customApp": {
     "defaultMessage": "Custom app"
   },
@@ -2414,8 +2423,44 @@
   "modelSettingsPanel.topP": {
     "defaultMessage": "Top P"
   },
+  "modelVisibilitySettings.addCustomModel": {
+    "defaultMessage": "Add"
+  },
+  "modelVisibilitySettings.customBadge": {
+    "defaultMessage": "Custom"
+  },
+  "modelVisibilitySettings.customModelPlaceholder": {
+    "defaultMessage": "Add custom model ID (e.g. gpt-4.5-preview, claude-3-7-sonnet)"
+  },
+  "modelVisibilitySettings.description": {
+    "defaultMessage": "Choose which models appear in the quick model selector in the chat toolbar. Pinned models can be switched in a single click without opening settings."
+  },
+  "modelVisibilitySettings.filterPlaceholder": {
+    "defaultMessage": "Filter models..."
+  },
+  "modelVisibilitySettings.noProviders": {
+    "defaultMessage": "No configured providers found. Please configure a provider first."
+  },
+  "modelVisibilitySettings.resetAll": {
+    "defaultMessage": "Reset to Defaults"
+  },
+  "modelVisibilitySettings.resetProvider": {
+    "defaultMessage": "Reset {provider}"
+  },
+  "modelVisibilitySettings.title": {
+    "defaultMessage": "Visible Models (Quick Selector)"
+  },
+  "modelVisibilitySettings.visibleCount": {
+    "defaultMessage": "{count} visible"
+  },
+  "modelsBottomBar.allModels": {
+    "defaultMessage": "All Models"
+  },
   "modelsBottomBar.changeModel": {
     "defaultMessage": "Change Model"
+  },
+  "modelsBottomBar.configureVisibleModels": {
+    "defaultMessage": "Configure visible models..."
   },
   "modelsBottomBar.currentModel": {
     "defaultMessage": "Current model"
@@ -2429,11 +2474,23 @@
   "modelsBottomBar.localModelSettingsTitle": {
     "defaultMessage": "Local Model Settings — {modelName}"
   },
+  "modelsBottomBar.moreOptions": {
+    "defaultMessage": "More..."
+  },
+  "modelsBottomBar.noModelsFound": {
+    "defaultMessage": "No models found matching \"{query}\""
+  },
+  "modelsBottomBar.pinnedModels": {
+    "defaultMessage": "Pinned Models"
+  },
   "modelsBottomBar.recentModels": {
     "defaultMessage": "Recent"
   },
   "modelsBottomBar.resolvedModel": {
     "defaultMessage": "Resolved model"
+  },
+  "modelsBottomBar.searchPlaceholder": {
+    "defaultMessage": "Search models..."
   },
   "modelsBottomBar.selectModel": {
     "defaultMessage": "Select Model"
@@ -4666,6 +4723,48 @@
   },
   "themeSelector.theme": {
     "defaultMessage": "Theme"
+  },
+  "thinkingEffortButton.highDesc": {
+    "defaultMessage": "Deep reasoning for complex problems"
+  },
+  "thinkingEffortButton.highLabel": {
+    "defaultMessage": "High"
+  },
+  "thinkingEffortButton.labelThinking": {
+    "defaultMessage": "Thinking: {level}"
+  },
+  "thinkingEffortButton.lowDesc": {
+    "defaultMessage": "Minimal thinking, light reasoning"
+  },
+  "thinkingEffortButton.lowLabel": {
+    "defaultMessage": "Low"
+  },
+  "thinkingEffortButton.maxDesc": {
+    "defaultMessage": "Maximum depth without reasoning constraints"
+  },
+  "thinkingEffortButton.maxLabel": {
+    "defaultMessage": "Max"
+  },
+  "thinkingEffortButton.mediumDesc": {
+    "defaultMessage": "Moderate thinking for balanced reasoning"
+  },
+  "thinkingEffortButton.mediumLabel": {
+    "defaultMessage": "Medium"
+  },
+  "thinkingEffortButton.offDesc": {
+    "defaultMessage": "No extended thinking, fastest responses"
+  },
+  "thinkingEffortButton.offLabel": {
+    "defaultMessage": "Off"
+  },
+  "thinkingEffortButton.subtitle": {
+    "defaultMessage": "Control reasoning depth before responding"
+  },
+  "thinkingEffortButton.title": {
+    "defaultMessage": "Thinking Effort"
+  },
+  "thinkingEffortButton.tooltip": {
+    "defaultMessage": "Thinking effort: {level} (⌥T to cycle)"
   },
   "toolApprovalButtons.allowOnce": {
     "defaultMessage": "Allow Once"
