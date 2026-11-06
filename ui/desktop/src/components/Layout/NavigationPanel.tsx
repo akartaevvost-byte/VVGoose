@@ -355,7 +355,7 @@ export const Navigation: React.FC<{
       transition={{ duration: 0.15 }}
       className="bg-background-primary outline-none flex flex-col h-full"
     >
-      <div className="h-[48px] no-drag" />
+      <div className="h-2 no-drag" />
 
       <div className="px-2 flex flex-col gap-0.5">
         {visibleItems.map((item) => (

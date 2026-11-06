@@ -505,28 +505,29 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const closeFile = useCallback(
     (filePath: string) => {
-      const openFilesSnapshot = openFilesRef.current;
-      const closedIdx = openFilesSnapshot.findIndex((f) => f.path === filePath);
-      const remaining = openFilesSnapshot.filter((f) => f.path !== filePath);
+      setOpenFiles((prev) => {
+        const closedIdx = prev.findIndex((f) => f.path === filePath);
+        const remaining = prev.filter((f) => f.path !== filePath);
 
-      setOpenFiles(remaining);
-
-      if (activeFilePath === filePath) {
-        if (remaining.length > 0) {
-          const targetIdx = closedIdx >= 0 ? Math.min(closedIdx, remaining.length - 1) : 0;
-          const nextActive = remaining[targetIdx];
-          if (nextActive) {
-            setActiveFilePath(nextActive.path);
-            setSelectedFile(nextActive.path);
+        if (activeFilePath === filePath) {
+          if (remaining.length > 0) {
+            const targetIdx = closedIdx >= 0 ? Math.min(closedIdx, remaining.length - 1) : 0;
+            const nextActive = remaining[targetIdx];
+            if (nextActive) {
+              setActiveFilePath(nextActive.path);
+              setSelectedFile(nextActive.path);
+            } else {
+              setActiveFilePath(null);
+              setSelectedFile(null);
+            }
           } else {
             setActiveFilePath(null);
             setSelectedFile(null);
           }
-        } else {
-          setActiveFilePath(null);
-          setSelectedFile(null);
         }
-      }
+
+        return remaining;
+      });
 
       setPendingDiff((currentDiff) => {
         if (currentDiff?.filePath === filePath) {

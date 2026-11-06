@@ -30,7 +30,7 @@ export const EditorTabs: React.FC = () => {
   return (
     <div
       ref={tabsContainerRef}
-      className="flex items-center h-9 bg-background-secondary/80 border-b border-border-primary px-1 overflow-x-auto no-scrollbar select-none"
+      className="no-drag flex items-center h-9 bg-background-secondary/80 border-b border-border-primary px-1 overflow-x-auto no-scrollbar select-none"
     >
       {openFiles.map((tab) => {
         const isActive = tab.path === activeFilePath;
@@ -41,20 +41,20 @@ export const EditorTabs: React.FC = () => {
             onAuxClick={(e) => handleTabAuxClick(e, tab.path)}
             title={tab.path}
             className={cn(
-              'group relative flex items-center gap-2 h-7 px-3 text-xs rounded-md cursor-pointer transition-colors max-w-[200px]',
+              'no-drag group relative flex items-center gap-2 h-7 px-3 text-xs rounded-md cursor-pointer transition-colors max-w-[200px]',
               isActive
-                ? 'bg-background-tertiary text-text-primary font-medium shadow-sm'
+                ? 'bg-background-tertiary text-text-primary font-medium shadow-xs'
                 : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/50'
             )}
           >
             {/* File Icon */}
-            <span className="flex-shrink-0">{getFileIcon(tab.name)}</span>
+            <span className="flex-shrink-0 pointer-events-none">{getFileIcon(tab.name)}</span>
 
             {/* File Name */}
-            <span className="truncate flex-1">{tab.name}</span>
+            <span className="truncate flex-1 pointer-events-none">{tab.name}</span>
 
             {/* Dirty or Close Indicator */}
-            <div className="flex items-center justify-center w-4 h-4 ml-1">
+            <div className="flex items-center justify-center w-5 h-5 ml-1">
               {tab.isDirty ? (
                 <span
                   className="w-2 h-2 rounded-full bg-goose-teal group-hover:hidden transition-all"
@@ -63,13 +63,16 @@ export const EditorTabs: React.FC = () => {
               ) : null}
               <button
                 type="button"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
                   closeFile(tab.path);
                 }}
                 className={cn(
-                  'flex items-center justify-center w-4 h-4 rounded hover:bg-background-primary/80 text-text-muted hover:text-text-primary transition-all cursor-pointer',
+                  'no-drag flex items-center justify-center w-5 h-5 rounded hover:bg-background-primary/80 text-text-muted hover:text-text-primary transition-all cursor-pointer z-10',
                   tab.isDirty
                     ? 'hidden group-hover:flex'
                     : isActive
@@ -79,7 +82,7 @@ export const EditorTabs: React.FC = () => {
                 title="Закрыть вкладку"
                 aria-label={`Закрыть ${tab.name}`}
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5 pointer-events-none" />
               </button>
             </div>
           </div>

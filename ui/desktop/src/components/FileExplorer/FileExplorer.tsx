@@ -524,7 +524,7 @@ export const FileExplorer: React.FC = () => {
   return (
     <div className="flex flex-col h-full overflow-hidden select-none relative">
       {/* Workspace Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border-primary bg-background-secondary/50">
+      <div className="no-drag flex items-center justify-between px-3 py-2 border-b border-border-primary bg-background-secondary/50">
         <div className="flex items-center gap-1.5 truncate">
           <Folder className="w-4 h-4 text-goose-teal flex-shrink-0" />
           <span

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Editor, { DiffEditor, OnMount, DiffOnMount, loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import type { WorkspaceFolderInfo } from '../../types/fileSystem';
 import { EditorTabs } from './EditorTabs';
 import { EmptyEditorView } from './EmptyEditorView';
@@ -58,6 +59,23 @@ const GOOSE_DARK_THEME: monaco.editor.IStandaloneThemeData = {
   },
 };
 
+const GOOSE_LIGHT_THEME: monaco.editor.IStandaloneThemeData = {
+  base: 'vs',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#ffffff',
+    'editor.foreground': '#1f2328',
+    'editor.lineHighlightBackground': '#f6f8fa',
+    'editor.selectionBackground': '#add6ff80',
+    'editorCursor.foreground': '#0d9488',
+    'editorLineNumber.foreground': '#8c959f',
+    'editorLineNumber.activeForeground': '#24292f',
+    'diffEditor.insertedTextBackground': '#13bbaf20',
+    'diffEditor.removedTextBackground': '#eb575720',
+  },
+};
+
 export function relativeToWorkspacePath(
   filePath: string,
   workspacePath: string,
@@ -95,6 +113,18 @@ export function relativeToWorkspacePath(
 }
 
 export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
+  let resolvedTheme: 'light' | 'dark' = 'dark';
+  try {
+     
+    const themeCtx = useTheme();
+    resolvedTheme = themeCtx.resolvedTheme;
+  } catch {
+    // Fallback if rendered outside ThemeProvider
+  }
+
+  const isDark = resolvedTheme === 'dark';
+  const monacoTheme = isDark ? 'goose-dark' : 'goose-light';
+
   const {
     activeFile,
     saveActiveFile,
@@ -162,7 +192,8 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
       editorRef.current = editor;
 
       monacoInstance.editor.defineTheme('goose-dark', GOOSE_DARK_THEME);
-      monacoInstance.editor.setTheme('goose-dark');
+      monacoInstance.editor.defineTheme('goose-light', GOOSE_LIGHT_THEME);
+      monacoInstance.editor.setTheme(monacoTheme);
 
       editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
         void saveActiveFile();
@@ -181,15 +212,16 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
         });
       });
     },
-    [saveActiveFile, closeFile]
+    [saveActiveFile, closeFile, monacoTheme]
   );
 
   const handleDiffEditorMount: DiffOnMount = useCallback(
-    (diffEditor, monaco) => {
+    (diffEditor, monacoInstance) => {
       // The diff editor can mount before any regular editor, so the theme
       // must be defined here as well or Monaco falls back to 'vs'
-      monaco.editor.defineTheme('goose-dark', GOOSE_DARK_THEME);
-      monaco.editor.setTheme('goose-dark');
+      monacoInstance.editor.defineTheme('goose-dark', GOOSE_DARK_THEME);
+      monacoInstance.editor.defineTheme('goose-light', GOOSE_LIGHT_THEME);
+      monacoInstance.editor.setTheme(monacoTheme);
 
       const originalEditor = diffEditor.getOriginalEditor?.();
       const modifiedEditor = diffEditor.getModifiedEditor?.();
@@ -201,13 +233,19 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
         rejectPendingDiff();
       };
 
-      modifiedEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, acceptCmd);
-      modifiedEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, rejectCmd);
-      originalEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, acceptCmd);
-      originalEditor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, rejectCmd);
+      modifiedEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter, acceptCmd);
+      modifiedEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Backspace, rejectCmd);
+      originalEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter, acceptCmd);
+      originalEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Backspace, rejectCmd);
     },
-    [acceptPendingDiff, rejectPendingDiff]
+    [acceptPendingDiff, rejectPendingDiff, monacoTheme]
   );
+
+  useEffect(() => {
+    if (editorRef.current) {
+      monaco.editor.setTheme(monacoTheme);
+    }
+  }, [monacoTheme]);
 
   const relativePath = activeFile
     ? relativeToWorkspacePath(activeFile.path, workspacePath, workspaceFolders)
@@ -269,7 +307,9 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
       )}
 
       {/* Editor or Diff Content */}
-      <div className="flex-1 min-h-0 relative overflow-hidden bg-[#1c1d22]">
+      <div
+        className={cn('flex-1 min-h-0 relative overflow-hidden', isDark ? 'bg-[#1c1d22]' : 'bg-white')}
+      >
         {isCurrentFileDiff && pendingDiff ? (
           <DiffEditor
             key={`diff-${pendingDiff.id}`}
@@ -277,7 +317,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
             language={getLanguageFromFilename(pendingDiff.fileName)}
             original={pendingDiff.originalContent}
             modified={pendingDiff.proposedContent}
-            theme="goose-dark"
+            theme={monacoTheme}
             onMount={handleDiffEditorMount}
             options={DIFF_EDITOR_OPTIONS}
           />
@@ -287,7 +327,7 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
             height="100%"
             language={language}
             value={activeFile.content}
-            theme="goose-dark"
+            theme={monacoTheme}
             onMount={handleEditorMount}
             onChange={(value) => updateFileContent(activeFile.path, value || '')}
             options={EDITOR_OPTIONS}

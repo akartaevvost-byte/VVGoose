@@ -223,17 +223,17 @@ export default function Hub({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 items-center justify-center px-6 relative">
+    <div className="flex flex-col h-full min-h-0 items-center justify-center px-4 sm:px-6 relative overflow-y-auto">
       <div className="w-full max-w-3xl">
         <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-6xl font-light text-text-primary tracking-tight tabular-nums">
+          <span className="text-4xl sm:text-5xl lg:text-6xl font-light text-text-primary tracking-tight tabular-nums">
             {time}
           </span>
           {meridiem ? (
-            <span className="text-2xl font-light text-text-secondary">{meridiem}</span>
+            <span className="text-xl sm:text-2xl font-light text-text-secondary">{meridiem}</span>
           ) : null}
         </div>
-        <p className="text-xl text-text-secondary mb-6">{greeting}</p>
+        <p className="text-base sm:text-lg lg:text-xl text-text-secondary mb-4 sm:mb-6">{greeting}</p>
 
         <ChatInputCard>
           <ChatInput

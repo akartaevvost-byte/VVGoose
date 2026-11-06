@@ -187,4 +187,13 @@ describe('AppLayout 3-panel layout', () => {
     renderWithProviders('/pair');
     expect(screen.getByTitle('Toggle File Explorer (Ctrl+Shift+E)')).toBeDefined();
   });
+
+  it('renders 3-panel workspace on root route ("Новый чат")', () => {
+    renderWithProviders('/');
+
+    expect(screen.getByTestId('editor-area')).toBeDefined();
+    expect(screen.getByTestId('file-explorer')).toBeDefined();
+    expect(screen.getByTitle('Toggle editor')).toBeDefined();
+    expect(screen.getByTitle('Toggle File Explorer (⌘⇧E)')).toBeDefined();
+  });
 });
