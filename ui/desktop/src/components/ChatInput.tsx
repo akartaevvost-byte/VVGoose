@@ -1692,58 +1692,57 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* Bottom action bar. Two rows on the left; send/stop button on the right.
-          Row 1: model selector, thinking effort, working directory, git branch.
-          Row 2: cost tracker, context window, extensions, diagnostics, attach, mic/voice. */}
+      {/* Bottom action bar. Two rows:
+          Row 1: model selector, thinking effort, working directory, git branch (full width).
+          Row 2: tools on the left, send/stop button on the right (positioned lower and further right). */}
       <div
         ref={bottomBarRef}
-        className="flex flex-row items-center justify-between gap-3 px-3 pt-2 pb-1 relative"
+        className="flex flex-col gap-1.5 pl-3 pr-1 pt-2 pb-0.5 relative"
       >
-        {/* Left side: two rows of controls */}
-        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-          {/* Row 1: model selector, thinking effort, working directory, git branch */}
-          <div className="flex flex-row items-center gap-2 flex-wrap">
-            <Tooltip>
-              <div>
-                <ModelsBottomBar
-                  sessionId={sessionId}
-                  dropdownRef={dropdownRef}
-                  setView={setView}
-                  sessionModel={effectiveModel}
-                  sessionProvider={effectiveProvider}
-                  latestInference={latestInference}
-                  onModelChanged={setModelOverride}
-                  sessionLoaded={sessionLoaded}
-                />
-              </div>
-            </Tooltip>
-
-            <ThinkingEffortButton
-              sessionId={sessionId}
-              currentProvider={effectiveProvider}
-              currentModel={effectiveModel}
-              isNarrow={isBottomBarNarrow}
-            />
-
-            {!isBottomBarNarrow && (
-              <DirSwitcher
-                className=""
-                sessionId={sessionId ?? undefined}
-                workingDir={currentWorkingDir}
-                onWorkingDirChange={async (newDir) => {
-                  await onWorkingDirChange(newDir);
-                  setWorkingDirOverride(newDir);
-                }}
+        {/* Row 1: model selector, thinking effort, working directory, git branch */}
+        <div className="flex flex-row items-center gap-2 flex-wrap">
+          <Tooltip>
+            <div>
+              <ModelsBottomBar
+                sessionId={sessionId}
+                dropdownRef={dropdownRef}
+                setView={setView}
+                sessionModel={effectiveModel}
+                sessionProvider={effectiveProvider}
+                latestInference={latestInference}
+                onModelChanged={setModelOverride}
+                sessionLoaded={sessionLoaded}
               />
-            )}
+            </div>
+          </Tooltip>
 
-            {!isBottomBarNarrow && currentWorkingDir && (
-              <GitBranchIndicator dir={currentWorkingDir} className="ml-1" />
-            )}
-          </div>
+          <ThinkingEffortButton
+            sessionId={sessionId}
+            currentProvider={effectiveProvider}
+            currentModel={effectiveModel}
+            isNarrow={isBottomBarNarrow}
+          />
 
-          {/* Row 2: cost tracker, context window, extensions, diagnostics, attach, mic/voice */}
-          <div className="flex flex-row items-center gap-3 flex-wrap">
+          {!isBottomBarNarrow && (
+            <DirSwitcher
+              className=""
+              sessionId={sessionId ?? undefined}
+              workingDir={currentWorkingDir}
+              onWorkingDirChange={async (newDir) => {
+                await onWorkingDirChange(newDir);
+                setWorkingDirOverride(newDir);
+              }}
+            />
+          )}
+
+          {!isBottomBarNarrow && currentWorkingDir && (
+            <GitBranchIndicator dir={currentWorkingDir} className="ml-1" />
+          )}
+        </div>
+
+        {/* Row 2: cost tracker, context window, extensions, diagnostics, attach, mic/voice on left; send button on right */}
+        <div className="flex flex-row items-center justify-between gap-2.5">
+          <div className="flex flex-row items-center gap-3 flex-wrap min-w-0">
             {COST_TRACKING_ENABLED && (
               <CostTracker
                 inputTokens={accumulatedInputTokens}
@@ -1866,50 +1865,50 @@ export default function ChatInput({
               </Tooltip>
             )}
           </div>
-        </div>
 
-        {/* Right side: send / stop button vertically centered */}
-        <div className="flex items-center self-center shrink-0">
-          {isLoading && !hasSubmittableContent ? (
-            <Button
-              type="button"
-              onClick={handleStop}
-              size="sm"
-              shape="round"
-              variant="ghost"
-              aria-label="Stop"
-              className="bg-background-tertiary text-text-primary hover:bg-background-tertiary/70"
-            >
-              <Stop />
-            </Button>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    shape="round"
-                    variant="ghost"
-                    disabled={isSubmitButtonDisabled}
-                    aria-label={intl.formatMessage(i18n.send)}
-                    onClick={onFormSubmit}
-                    className={cn(
-                      'bg-background-tertiary',
-                      isSubmitButtonDisabled
-                        ? 'text-text-secondary cursor-not-allowed opacity-60'
-                        : 'text-text-primary hover:bg-background-tertiary/70 hover:cursor-pointer'
-                    )}
-                  >
-                    <ArrowUp className="w-4 h-4" strokeWidth={2.25} />
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{getSubmitButtonTooltip()}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          {/* Right side: send / stop button positioned lower and to the right */}
+          <div className="flex items-center shrink-0">
+            {isLoading && !hasSubmittableContent ? (
+              <Button
+                type="button"
+                onClick={handleStop}
+                size="sm"
+                shape="round"
+                variant="ghost"
+                aria-label="Stop"
+                className="bg-background-tertiary text-text-primary hover:bg-background-tertiary/70"
+              >
+                <Stop />
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      shape="round"
+                      variant="ghost"
+                      disabled={isSubmitButtonDisabled}
+                      aria-label={intl.formatMessage(i18n.send)}
+                      onClick={onFormSubmit}
+                      className={cn(
+                        'bg-background-tertiary',
+                        isSubmitButtonDisabled
+                          ? 'text-text-secondary cursor-not-allowed opacity-60'
+                          : 'text-text-primary hover:bg-background-tertiary/70 hover:cursor-pointer'
+                      )}
+                    >
+                      <ArrowUp className="w-4 h-4" strokeWidth={2.25} />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{getSubmitButtonTooltip()}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
         {sessionId && diagnosticsOpen && (
           <DiagnosticsModal
