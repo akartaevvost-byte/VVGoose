@@ -6,46 +6,60 @@ import { describe, expect, it } from 'vitest';
 import { PanelLayoutIcon } from './PanelLayoutIcon';
 
 describe('PanelLayoutIcon', () => {
-  it('renders left panel schematic icon in open and closed states', () => {
+  it('renders left panel schematic icon in open and closed states with distinguishable fill opacity', () => {
     const { container: closedContainer } = render(
       <PanelLayoutIcon position="left" isOpen={false} />
     );
-    // Closed state: only outline rect and divider lines, no filled path
-    expect(closedContainer.querySelectorAll('path').length).toBe(0);
+    // Closed state: left region path has subtle tint (fill-opacity 0.28)
+    const closedPath = closedContainer.querySelector('path');
+    expect(closedPath).toBeDefined();
+    expect(closedPath?.getAttribute('fill-opacity')).toBe('0.28');
     expect(closedContainer.querySelectorAll('rect').length).toBe(1);
     expect(closedContainer.querySelectorAll('line').length).toBe(2);
 
     const { container: openContainer } = render(
       <PanelLayoutIcon position="left" isOpen={true} />
     );
-    // Open state: left region path is filled
-    expect(openContainer.querySelectorAll('path').length).toBe(1);
+    // Open state: left region path is solidly filled (fill-opacity 1)
+    const openPath = openContainer.querySelector('path');
+    expect(openPath).toBeDefined();
+    expect(openPath?.getAttribute('fill-opacity')).toBe('1');
   });
 
-  it('renders center panel schematic icon in open and closed states', () => {
+  it('renders center panel schematic icon in open and closed states with distinguishable fill opacity', () => {
     const { container: closedContainer } = render(
       <PanelLayoutIcon position="center" isOpen={false} />
     );
-    expect(closedContainer.querySelectorAll('rect').length).toBe(1);
+    // Closed state: center rect has subtle tint (fill-opacity 0.28)
+    const closedRects = closedContainer.querySelectorAll('rect');
+    expect(closedRects.length).toBe(2);
+    expect(closedRects[1]?.getAttribute('fill-opacity')).toBe('0.28');
 
     const { container: openContainer } = render(
       <PanelLayoutIcon position="center" isOpen={true} />
     );
-    // Open state: inner center rect is rendered (total 2 rects)
-    expect(openContainer.querySelectorAll('rect').length).toBe(2);
+    // Open state: center rect is solidly filled (fill-opacity 1)
+    const openRects = openContainer.querySelectorAll('rect');
+    expect(openRects.length).toBe(2);
+    expect(openRects[1]?.getAttribute('fill-opacity')).toBe('1');
   });
 
-  it('renders right panel schematic icon in open and closed states', () => {
+  it('renders right panel schematic icon in open and closed states with distinguishable fill opacity', () => {
     const { container: closedContainer } = render(
       <PanelLayoutIcon position="right" isOpen={false} />
     );
-    expect(closedContainer.querySelectorAll('path').length).toBe(0);
+    // Closed state: right region path has subtle tint (fill-opacity 0.28)
+    const closedPath = closedContainer.querySelector('path');
+    expect(closedPath).toBeDefined();
+    expect(closedPath?.getAttribute('fill-opacity')).toBe('0.28');
 
     const { container: openContainer } = render(
       <PanelLayoutIcon position="right" isOpen={true} />
     );
-    // Open state: right region path is filled
-    expect(openContainer.querySelectorAll('path').length).toBe(1);
+    // Open state: right region path is solidly filled (fill-opacity 1)
+    const openPath = openContainer.querySelector('path');
+    expect(openPath).toBeDefined();
+    expect(openPath?.getAttribute('fill-opacity')).toBe('1');
   });
 });
 
