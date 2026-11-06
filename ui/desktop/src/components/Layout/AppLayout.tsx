@@ -364,7 +364,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
 
       {/* Main content with navigation. Shared canvas; the sidebar is a
           rounded outlined card floating on it with breathing room. */}
-      <div className="flex flex-1 w-full h-full min-h-0 flex-row">
+      <div className="flex flex-1 w-full min-h-0 flex-row">
         <motion.div
           key="nav"
           initial={false}
@@ -515,7 +515,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
             )}
           </div>
         ) : (
-          <div className="flex-1 overflow-hidden min-h-0">
+          <div className="flex-1 overflow-hidden min-h-0 h-full">
             <Outlet />
             {/* Always render ChatSessionsContainer to keep SSE connections alive.
                 When navigating away from /pair, hide it with CSS */}
