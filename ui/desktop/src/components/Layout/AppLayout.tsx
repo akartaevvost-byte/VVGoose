@@ -276,9 +276,28 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
 
         {/* Right Section: Workspace & Layout toggles */}
         <div className="flex items-center gap-1 no-drag">
-          {/* Chat Window Toggle (Message icon) */}
+          {/* Left Panel (Navigation Sidebar) */}
+          <Button
+            onClick={() => setIsNavExpanded(!isNavExpanded)}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={cn(
+              'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
+              isNavExpanded
+                ? 'bg-background-tertiary text-text-primary shadow-xs'
+                : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
+            )}
+            variant="ghost"
+            size="xs"
+            title={navToggleTitle}
+            aria-label={navToggleTitle}
+          >
+            <PanelLayoutIcon position="left" isOpen={isNavExpanded} />
+          </Button>
+
+          {/* Chat Window Toggle (Message icon), Center Panel (Editor) & Right Panel (Files) on Main Workspace Routes */}
           {isMainWorkspaceRoute && (
             <>
+              <div className="w-[1px] h-4 bg-border-primary/40 mx-0.5" />
               <Button
                 onClick={() => setIsChatVisible((v) => !v)}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -300,31 +319,6 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                   )}
                 />
               </Button>
-              <div className="w-[1px] h-4 bg-border-primary/40 mx-0.5" />
-            </>
-          )}
-
-          {/* Left Panel (Navigation Sidebar) */}
-          <Button
-            onClick={() => setIsNavExpanded(!isNavExpanded)}
-            onMouseDown={(e) => e.stopPropagation()}
-            className={cn(
-              'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
-              isNavExpanded
-                ? 'bg-background-tertiary text-text-primary shadow-xs'
-                : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
-            )}
-            variant="ghost"
-            size="xs"
-            title={navToggleTitle}
-            aria-label={navToggleTitle}
-          >
-            <PanelLayoutIcon position="left" isOpen={isNavExpanded} />
-          </Button>
-
-          {/* Center Panel (Editor) & Right Panel (Files) on Main Workspace Routes */}
-          {isMainWorkspaceRoute && (
-            <>
               <Button
                 onClick={() => setIsEditorVisible((v) => !v)}
                 onMouseDown={(e) => e.stopPropagation()}
