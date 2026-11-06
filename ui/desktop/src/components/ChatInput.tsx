@@ -360,7 +360,7 @@ export default function ChatInput({
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? 0;
-      setIsBottomBarNarrow(width < 480);
+      setIsBottomBarNarrow(width < 360);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -737,7 +737,7 @@ export default function ChatInput({
 
   const maxHeight = 10 * 24;
 
-  const minTextareaHeight = 38;
+  const minTextareaHeight = 60;
 
   const debouncedAutosize = useMemo(
     () =>
@@ -1692,58 +1692,58 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* Bottom action bar. Single flat row; no dividers. Left side: model
-          + working dir. Right side (after spacer): context indicator,
-          extensions, diagnostics, attach, mic, send. When the bar is narrow
-          (e.g. on a small window), the secondary controls drop out so the
-          model selector + send button always stay visible. */}
-      <div ref={bottomBarRef} className="flex flex-row items-center gap-2 px-3 py-2 relative">
-        {/* Left: model selector */}
-        <Tooltip>
-          <div>
-            <ModelsBottomBar
+      {/* Bottom action bar. Two rows on the left; send/stop button on the right.
+          Row 1: model selector, thinking effort, working directory, git branch.
+          Row 2: cost tracker, context window, extensions, diagnostics, attach, mic/voice. */}
+      <div
+        ref={bottomBarRef}
+        className="flex flex-row items-center justify-between gap-3 px-3 pt-2 pb-1 relative"
+      >
+        {/* Left side: two rows of controls */}
+        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+          {/* Row 1: model selector, thinking effort, working directory, git branch */}
+          <div className="flex flex-row items-center gap-2 flex-wrap">
+            <Tooltip>
+              <div>
+                <ModelsBottomBar
+                  sessionId={sessionId}
+                  dropdownRef={dropdownRef}
+                  setView={setView}
+                  sessionModel={effectiveModel}
+                  sessionProvider={effectiveProvider}
+                  latestInference={latestInference}
+                  onModelChanged={setModelOverride}
+                  sessionLoaded={sessionLoaded}
+                />
+              </div>
+            </Tooltip>
+
+            <ThinkingEffortButton
               sessionId={sessionId}
-              dropdownRef={dropdownRef}
-              setView={setView}
-              sessionModel={effectiveModel}
-              sessionProvider={effectiveProvider}
-              latestInference={latestInference}
-              onModelChanged={setModelOverride}
-              sessionLoaded={sessionLoaded}
+              currentProvider={effectiveProvider}
+              currentModel={effectiveModel}
+              isNarrow={isBottomBarNarrow}
             />
+
+            {!isBottomBarNarrow && (
+              <DirSwitcher
+                className=""
+                sessionId={sessionId ?? undefined}
+                workingDir={currentWorkingDir}
+                onWorkingDirChange={async (newDir) => {
+                  await onWorkingDirChange(newDir);
+                  setWorkingDirOverride(newDir);
+                }}
+              />
+            )}
+
+            {!isBottomBarNarrow && currentWorkingDir && (
+              <GitBranchIndicator dir={currentWorkingDir} className="ml-1" />
+            )}
           </div>
-        </Tooltip>
 
-        <ThinkingEffortButton
-          sessionId={sessionId}
-          currentProvider={effectiveProvider}
-          currentModel={effectiveModel}
-          isNarrow={isBottomBarNarrow}
-        />
-
-        {/* Left: working directory (leaf folder name only) */}
-        {!isBottomBarNarrow && (
-          <DirSwitcher
-            className=""
-            sessionId={sessionId ?? undefined}
-            workingDir={currentWorkingDir}
-            onWorkingDirChange={async (newDir) => {
-              await onWorkingDirChange(newDir);
-              setWorkingDirOverride(newDir);
-            }}
-          />
-        )}
-
-        {!isBottomBarNarrow && currentWorkingDir && (
-          <GitBranchIndicator dir={currentWorkingDir} className="ml-1" />
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {!isBottomBarNarrow && (
-          <>
-            {/* Right: cost tracker (when enabled) */}
+          {/* Row 2: cost tracker, context window, extensions, diagnostics, attach, mic/voice */}
+          <div className="flex flex-row items-center gap-3 flex-wrap">
             {COST_TRACKING_ENABLED && (
               <CostTracker
                 inputTokens={accumulatedInputTokens}
@@ -1754,21 +1754,18 @@ export default function ChatInput({
               />
             )}
 
-            {/* Right: context window indicator */}
             <ContextWindowIndicator
               totalTokens={totalTokens || 0}
               tokenLimit={tokenLimit}
               onOpen={sessionId ? () => setContextXrayOpen(true) : undefined}
             />
 
-            {/* Right: extension selector */}
             <BottomMenuExtensionSelection
               sessionId={sessionId}
               nextChatExtensionDraft={nextChatExtensionDraft}
               onNextChatExtensionDraftChange={onNextChatExtensionDraftChange}
             />
 
-            {/* Right: diagnostics */}
             {sessionId && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1790,7 +1787,6 @@ export default function ChatInput({
               </Tooltip>
             )}
 
-            {/* Right: attach */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1810,113 +1806,111 @@ export default function ChatInput({
               </TooltipTrigger>
               <TooltipContent>Attach file</TooltipContent>
             </Tooltip>
-          </>
-        )}
 
-        {liveVoice && (
-          <LiveVoiceButton
-            availability={liveVoice.availability}
-            phase={liveVoice.phase}
-            muted={liveVoice.muted}
-            activeInAnotherSession={liveVoice.activeInAnotherSession}
-            onStart={() => void liveVoice.start()}
-            onStop={() => void liveVoice.stop()}
-            onToggleMute={liveVoice.toggleMute}
-            composerEmpty={
-              displayValue.trim().length === 0 &&
-              pastedImages.length === 0 &&
-              allDroppedFiles.length === 0
-            }
-          />
-        )}
+            {liveVoice && (
+              <LiveVoiceButton
+                availability={liveVoice.availability}
+                phase={liveVoice.phase}
+                muted={liveVoice.muted}
+                activeInAnotherSession={liveVoice.activeInAnotherSession}
+                onStart={() => void liveVoice.start()}
+                onStop={() => void liveVoice.stop()}
+                onToggleMute={liveVoice.toggleMute}
+                composerEmpty={
+                  displayValue.trim().length === 0 &&
+                  pastedImages.length === 0 &&
+                  allDroppedFiles.length === 0
+                }
+              />
+            )}
 
-        {/* Right: mic — ghost icon, no background when idle */}
-        {dictationProvider && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                shape="round"
-                onClick={() => {
-                  if (!isEnabled) return;
-                  if (isRecording) {
-                    trackVoiceDictation('stop');
-                    stopRecording();
-                  } else {
-                    trackVoiceDictation('start');
-                    startRecording();
-                  }
-                }}
-                // Keep the button hoverable when only !isEnabled so the
-                // "Dictation not configured" tooltip stays reachable.
-                // We still natively disable while transcribing.
-                disabled={isTranscribing}
-                aria-disabled={!isEnabled}
-                className={cn(
-                  'transition-colors',
-                  isRecording
-                    ? 'text-red-500 hover:text-red-600'
-                    : 'text-text-primary/70 hover:text-text-primary',
-                  isTranscribing && 'animate-pulse',
-                  !isEnabled && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                <Microphone size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {!isEnabled ? (
-                <p>Dictation not configured (Settings)</p>
-              ) : (
-                <p>Voice dictation{isRecording ? '' : ' • Say "submit" to send'}</p>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        )}
-
-        {/* Right: send / stop — soft gray circle with up-arrow */}
-        {isLoading && !hasSubmittableContent ? (
-          <Button
-            type="button"
-            onClick={handleStop}
-            size="sm"
-            shape="round"
-            variant="ghost"
-            aria-label="Stop"
-            className="bg-background-tertiary text-text-primary hover:bg-background-tertiary/70"
-          >
-            <Stop />
-          </Button>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>
-                <Button
-                  type="button"
-                  size="sm"
-                  shape="round"
-                  variant="ghost"
-                  disabled={isSubmitButtonDisabled}
-                  aria-label={intl.formatMessage(i18n.send)}
-                  onClick={onFormSubmit}
-                  className={cn(
-                    'bg-background-tertiary',
-                    isSubmitButtonDisabled
-                      ? 'text-text-secondary cursor-not-allowed opacity-60'
-                      : 'text-text-primary hover:bg-background-tertiary/70 hover:cursor-pointer'
+            {dictationProvider && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    shape="round"
+                    onClick={() => {
+                      if (!isEnabled) return;
+                      if (isRecording) {
+                        trackVoiceDictation('stop');
+                        stopRecording();
+                      } else {
+                        trackVoiceDictation('start');
+                        startRecording();
+                      }
+                    }}
+                    disabled={isTranscribing}
+                    aria-disabled={!isEnabled}
+                    className={cn(
+                      'transition-colors',
+                      isRecording
+                        ? 'text-red-500 hover:text-red-600'
+                        : 'text-text-primary/70 hover:text-text-primary',
+                      isTranscribing && 'animate-pulse',
+                      !isEnabled && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    <Microphone size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {!isEnabled ? (
+                    <p>Dictation not configured (Settings)</p>
+                  ) : (
+                    <p>Voice dictation{isRecording ? '' : ' • Say "submit" to send'}</p>
                   )}
-                >
-                  <ArrowUp className="w-4 h-4" strokeWidth={2.25} />
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{getSubmitButtonTooltip()}</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+
+        {/* Right side: send / stop button vertically centered */}
+        <div className="flex items-center self-center shrink-0">
+          {isLoading && !hasSubmittableContent ? (
+            <Button
+              type="button"
+              onClick={handleStop}
+              size="sm"
+              shape="round"
+              variant="ghost"
+              aria-label="Stop"
+              className="bg-background-tertiary text-text-primary hover:bg-background-tertiary/70"
+            >
+              <Stop />
+            </Button>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    shape="round"
+                    variant="ghost"
+                    disabled={isSubmitButtonDisabled}
+                    aria-label={intl.formatMessage(i18n.send)}
+                    onClick={onFormSubmit}
+                    className={cn(
+                      'bg-background-tertiary',
+                      isSubmitButtonDisabled
+                        ? 'text-text-secondary cursor-not-allowed opacity-60'
+                        : 'text-text-primary hover:bg-background-tertiary/70 hover:cursor-pointer'
+                    )}
+                  >
+                    <ArrowUp className="w-4 h-4" strokeWidth={2.25} />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{getSubmitButtonTooltip()}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         {sessionId && diagnosticsOpen && (
           <DiagnosticsModal
             isOpen={diagnosticsOpen}
