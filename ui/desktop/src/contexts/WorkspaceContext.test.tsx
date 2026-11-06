@@ -5,6 +5,7 @@ import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceProvider, useWorkspace } from './WorkspaceContext';
+import { setCurrentWindowWorkspacePath } from '../utils/workingDir';
 import * as acpModule from '../acp/permissionRequests';
 import * as toastsModule from '../toasts';
 
@@ -25,6 +26,8 @@ describe('WorkspaceContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    setCurrentWindowWorkspacePath('');
+    delete (window as { appConfig?: unknown }).appConfig;
 
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       workspaceReadFile: vi.fn().mockImplementation((filePath: string) => {
@@ -118,8 +121,44 @@ describe('WorkspaceContext', () => {
         { path: '/root/packages/app', name: 'App' },
         { path: '/root/packages/core', name: 'Core' },
       ],
-      name: 'App',
+      name: 'project',
     });
+    expect(result.current.workspaceName).toBe('project');
+    expect(result.current.workspaceKind).toBe('code-workspace');
+  });
+
+  it('replaces a multi-root workspace with the single folder the user opens', async () => {
+    const workspaceContent = JSON.stringify({
+      folders: [
+        { path: 'packages/app', name: 'качество' },
+        { path: 'packages/core', name: 'Core' },
+      ],
+    });
+    vi.mocked(window.electron.workspaceReadFile).mockResolvedValueOnce({
+      content: workspaceContent,
+      filePath: '/root/качество.code-workspace',
+      error: null,
+      found: true,
+      isBinary: false,
+    });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.openCodeWorkspace('/root/качество.code-workspace');
+    });
+    expect(result.current.workspaceFolders).toHaveLength(2);
+    expect(result.current.workspaceName).toBe('качество');
+
+    act(() => {
+      result.current.setWorkspacePath('/projects/VVGoose');
+    });
+
+    expect(result.current.workspacePath).toBe('/projects/VVGoose');
+    expect(result.current.workspaceKind).toBe('folder');
+    expect(result.current.workspaceFolders).toEqual([
+      { path: '/projects/VVGoose', name: 'VVGoose' },
+    ]);
   });
 
   it('restores lastOpenedWorkspace from electron settings on mount when local storage is empty', async () => {
@@ -138,6 +177,86 @@ describe('WorkspaceContext', () => {
         { path: '/restored/workspace', name: 'workspace' },
       ]);
     });
+  });
+
+  it('uses REQUEST_DIR instead of the saved workspace', async () => {
+    localStorage.setItem('goose_workspace_path', '/old/cache');
+    localStorage.setItem(
+      'goose_workspace_folders',
+      JSON.stringify([
+        { path: '/old/one', name: 'качество' },
+        { path: '/old/two', name: 'two' },
+      ])
+    );
+    vi.mocked(window.electron.getSetting).mockResolvedValue({
+      path: '/kachestvo',
+      type: 'code-workspace',
+      name: 'качество',
+      workspaceFilePath: '/kachestvo/качество.code-workspace',
+      folders: [
+        { path: '/kachestvo', name: 'качество' },
+        { path: '/other', name: 'other' },
+      ],
+    });
+    Object.defineProperty(window, 'appConfig', {
+      configurable: true,
+      value: {
+        get: (key: string) => (key === 'REQUEST_DIR' ? '/projects/VVGoose' : ''),
+      },
+    });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    expect(result.current.workspacePath).toBe('/projects/VVGoose');
+    expect(result.current.workspaceFolders).toEqual([
+      { path: '/projects/VVGoose', name: 'VVGoose' },
+    ]);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.workspacePath).toBe('/projects/VVGoose');
+    expect(result.current.workspaceKind).toBe('folder');
+  });
+
+  it('does not let a late workspace restore replace a folder the user just opened', async () => {
+    let resolveSetting: (value: {
+      path: string;
+      type: 'code-workspace';
+      name: string;
+      workspaceFilePath: string;
+      folders: Array<{ path: string; name: string }>;
+    }) => void = () => {};
+    vi.mocked(window.electron.getSetting).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSetting = resolve;
+      }) as ReturnType<typeof window.electron.getSetting>
+    );
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    act(() => {
+      result.current.setWorkspacePath('/projects/VVGoose');
+    });
+
+    await act(async () => {
+      resolveSetting({
+        path: '/kachestvo',
+        type: 'code-workspace',
+        name: 'качество',
+        workspaceFilePath: '/kachestvo/качество.code-workspace',
+        folders: [
+          { path: '/kachestvo', name: 'качество' },
+          { path: '/other', name: 'other' },
+        ],
+      });
+    });
+
+    expect(result.current.workspacePath).toBe('/projects/VVGoose');
+    expect(result.current.workspaceFolders).toEqual([
+      { path: '/projects/VVGoose', name: 'VVGoose' },
+    ]);
   });
 
   it('clamps chatWidth to min/max boundaries', () => {
@@ -484,9 +603,9 @@ describe('WorkspaceContext', () => {
   });
 
   it('openWorkspaceFileDialog rejects files not ending with .code-workspace', async () => {
-    (window.electron.selectFileOrDirectory as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
-      '/path/to/random.txt'
-    );
+    (
+      window.electron.selectFileOrDirectory as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue('/path/to/random.txt');
 
     const { result } = renderHook(() => useWorkspace(), { wrapper });
 

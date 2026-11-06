@@ -19,6 +19,10 @@ import { useNavigationContextSafe } from './Layout/NavigationContext';
 import { cn } from '../utils';
 import { useChatSession } from '../hooks/useChatSession';
 import { acpUpdateWorkingDir } from '../acp/sessions';
+import { useWorkspace } from '../contexts/WorkspaceContext';
+import { registerWorkspaceSessionSync } from '../utils/workspaceSessionSync';
+import { directoryIsInsideWorkspace } from '../utils/windowWorkspace';
+import { toastError } from '../toasts';
 import { useNavigation } from '../hooks/useNavigation';
 import { RecipeHeader } from './RecipeHeader';
 import type { Recipe } from '../recipe';
@@ -231,15 +235,57 @@ export default function BaseChat({
     sessionLoaded,
   ]);
 
-  const handleWorkingDirChange = useCallback(
-    async (newDir: string) => {
-      if (!session) {
-        throw new Error('Cannot update working directory before ACP session is loaded');
-      }
-      await acpUpdateWorkingDir(session.id, newDir);
-      updateSession((currentSession) => ({ ...currentSession, working_dir: newDir }));
+  const { workspacePath, workspaceFolders, openFolder } = useWorkspace();
+  const workspacePathRef = useRef(workspacePath);
+  const workspaceFoldersRef = useRef(workspaceFolders);
+  const adoptionKeyRef = useRef('');
+  workspacePathRef.current = workspacePath;
+  workspaceFoldersRef.current = workspaceFolders;
+
+  const adoptWorkspaceDirectory = useCallback(
+    async (dir: string) => {
+      if (!session || !dir || session.working_dir === dir) return;
+      await acpUpdateWorkingDir(session.id, dir);
+      updateSession((currentSession) => ({ ...currentSession, working_dir: dir }));
+      window.dispatchEvent(
+        new CustomEvent(AppEvents.SESSION_WORKING_DIR_CHANGED, {
+          detail: { sessionId: session.id, workingDir: dir },
+        })
+      );
     },
     [session, updateSession]
+  );
+
+  useEffect(() => {
+    if (!isActiveSession) return;
+    return registerWorkspaceSessionSync(adoptWorkspaceDirectory);
+  }, [adoptWorkspaceDirectory, isActiveSession]);
+
+  useEffect(() => {
+    if (!isActiveSession || !session?.working_dir) return;
+    const dir = workspacePathRef.current;
+    if (!dir || directoryIsInsideWorkspace(workspaceFoldersRef.current, session.working_dir)) {
+      return;
+    }
+    const adoptionKey = `${session.id}:${dir}`;
+    if (adoptionKeyRef.current === adoptionKey) return;
+    adoptionKeyRef.current = adoptionKey;
+    void adoptWorkspaceDirectory(dir).catch((error) => {
+      if (adoptionKeyRef.current === adoptionKey) {
+        adoptionKeyRef.current = '';
+      }
+      toastError({
+        title: 'Не удалось сменить директорию агента',
+        msg: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, [adoptWorkspaceDirectory, isActiveSession, session?.id, session?.working_dir]);
+
+  const handleWorkingDirChange = useCallback(
+    async (newDir: string) => {
+      await openFolder(newDir);
+    },
+    [openFolder]
   );
 
   const recipe = session?.recipe as Recipe | null | undefined;
@@ -608,7 +654,7 @@ export default function BaseChat({
               sessionModel={sessionModel}
               sessionProvider={sessionProvider}
               sessionLoaded={sessionLoaded}
-              workingDir={session?.working_dir}
+              workingDir={workspacePath || session?.working_dir}
               onWorkingDirChange={handleWorkingDirChange}
               latestInference={latestInference}
               liveVoice={{

@@ -188,12 +188,23 @@ export function useNavigationSessions() {
       );
     };
 
+    const handleWorkingDirChanged = (event: Event) => {
+      const { sessionId, workingDir } = (
+        event as CustomEvent<{ sessionId: string; workingDir: string }>
+      ).detail;
+      setRecentSessions((prev) =>
+        prev.map((session) => (session.id === sessionId ? { ...session, workingDir } : session))
+      );
+    };
+
     window.addEventListener(AppEvents.SESSION_DELETED, handleSessionDeleted);
     window.addEventListener(AppEvents.SESSION_RENAMED, handleSessionRenamed);
+    window.addEventListener(AppEvents.SESSION_WORKING_DIR_CHANGED, handleWorkingDirChanged);
 
     return () => {
       window.removeEventListener(AppEvents.SESSION_DELETED, handleSessionDeleted);
       window.removeEventListener(AppEvents.SESSION_RENAMED, handleSessionRenamed);
+      window.removeEventListener(AppEvents.SESSION_WORKING_DIR_CHANGED, handleWorkingDirChanged);
     };
   }, []);
 

@@ -21,6 +21,7 @@ import { cn } from '../../utils';
 import type { ProjectGroup } from '../../utils/projectSessions';
 import { defineMessages, useIntl } from '../../i18n';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { directoryIsInsideWorkspace } from '../../utils/windowWorkspace';
 
 type StreamState = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -313,23 +314,18 @@ export const Navigation: React.FC<{
   const [isChatsExpanded, setIsChatsExpanded] = useState(true);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
 
-  const { workspacePath, setWorkspacePath } = useWorkspace();
-  const workspacePathRef = useRef(workspacePath);
-  workspacePathRef.current = workspacePath;
-  const activeSession = useMemo(
-    () => recentSessions.find((s) => s.id === activeSessionId),
-    [recentSessions, activeSessionId]
-  );
+  const { workspaceFolders, openFolder } = useWorkspace();
 
-  // Switching the active session adopts that session's own working directory;
-  // the session is never silently moved to whatever the UI is showing. The
-  // explicit working-dir picker in the chat updates the session instead.
-  useEffect(() => {
-    if (!activeSession?.workingDir || activeSession.workingDir === workspacePathRef.current) {
-      return;
-    }
-    setWorkspacePath(activeSession.workingDir);
-  }, [activeSession?.id, activeSession?.workingDir, setWorkspacePath]);
+  const openSession = useCallback(
+    (session: SessionListItem) => {
+      clearUnread(session.id);
+      if (session.workingDir && !directoryIsInsideWorkspace(workspaceFolders, session.workingDir)) {
+        void openFolder(session.workingDir, { syncActiveSession: false });
+      }
+      handleSessionClick(session.id);
+    },
+    [clearUnread, handleSessionClick, openFolder, workspaceFolders]
+  );
 
   const toggleProjectCollapsed = useCallback((path: string) => {
     setCollapsedProjects((prev) => {
@@ -412,10 +408,7 @@ export const Navigation: React.FC<{
                           active={session.id === activeSessionId}
                           isLiveVoiceActive={session.id === activeLiveVoiceSessionId}
                           status={sessionStatuses.get(session.id)}
-                          onClick={() => {
-                            clearUnread(session.id);
-                            handleSessionClick(session.id);
-                          }}
+                          onClick={() => openSession(session)}
                           onRenamed={fetchSessions}
                         />
                       ))}
@@ -430,10 +423,7 @@ export const Navigation: React.FC<{
                   active={session.id === activeSessionId}
                   isLiveVoiceActive={session.id === activeLiveVoiceSessionId}
                   status={sessionStatuses.get(session.id)}
-                  onClick={() => {
-                    clearUnread(session.id);
-                    handleSessionClick(session.id);
-                  }}
+                  onClick={() => openSession(session)}
                   onRenamed={fetchSessions}
                 />
               ))

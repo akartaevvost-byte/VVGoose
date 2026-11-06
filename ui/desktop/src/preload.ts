@@ -157,6 +157,14 @@ type ElectronAPI = {
   workspaceGetGitStatuses: (workspacePath: string) => Promise<Record<string, GitFileStatus>>;
   workspaceStartWatching: (workspacePath: string | string[]) => Promise<void>;
   workspaceStopWatching: () => Promise<void>;
+  setWindowWorkspace: (workspace: {
+    roots: string[];
+    primaryRoot: string;
+    title: string;
+  }) => Promise<void>;
+  setRecentWorkspaces: (
+    workspaces: Array<{ name: string; workspaceFilePath: string; lastOpened: number }>
+  ) => Promise<void>;
   getAllowedExtensions: () => Promise<string[] | null>;
   getPathForFile: (file: File) => string;
   setMenuBarIcon: (show: boolean) => Promise<boolean>;
@@ -282,6 +290,11 @@ const electronAPI: ElectronAPI = {
   workspaceStartWatching: (workspacePath: string | string[]) =>
     ipcRenderer.invoke('workspace-start-watching', workspacePath),
   workspaceStopWatching: () => ipcRenderer.invoke('workspace-stop-watching'),
+  setWindowWorkspace: (workspace: { roots: string[]; primaryRoot: string; title: string }) =>
+    ipcRenderer.invoke('set-window-workspace', workspace),
+  setRecentWorkspaces: (
+    workspaces: Array<{ name: string; workspaceFilePath: string; lastOpened: number }>
+  ) => ipcRenderer.invoke('set-recent-workspaces', workspaces),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getAllowedExtensions: () => ipcRenderer.invoke('get-allowed-extensions'),
   setMenuBarIcon: (show: boolean) => ipcRenderer.invoke('set-menu-bar-icon', show),

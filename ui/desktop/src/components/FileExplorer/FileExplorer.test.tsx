@@ -93,6 +93,9 @@ describe('FileExplorer', () => {
     // Verify Git status badges M and U
     expect(screen.getByText('M')).toBeDefined();
     expect(screen.getByText('U')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Папка...' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Добавить папку...' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Workspace...' })).toBeNull();
 
     // Toggle folder expansion
     fireEvent.click(screen.getByText('crates'));
@@ -100,6 +103,43 @@ describe('FileExplorer', () => {
     await waitFor(() => {
       expect(screen.getByText('goose')).toBeDefined();
     });
+  });
+
+  it('shows the code-workspace name instead of a folder count', async () => {
+    localStorage.setItem(
+      'goose_workspace_state',
+      JSON.stringify({
+        kind: 'code-workspace',
+        path: '/mock/app',
+        name: 'качество',
+        workspaceFilePath: '/mock/качество.code-workspace',
+        folders: [
+          { path: '/mock/app', name: 'app' },
+          { path: '/mock/core', name: 'core' },
+        ],
+      })
+    );
+
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      workspaceReadDirectory: vi.fn().mockResolvedValue([]),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+
+    render(
+      <WorkspaceProvider>
+        <FileExplorer />
+      </WorkspaceProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('качество')).toBeDefined();
+      expect(screen.getByText('app')).toBeDefined();
+      expect(screen.getByText('core')).toBeDefined();
+    });
+    expect(screen.queryByText('2 папок')).toBeNull();
   });
 
   it('opens create-file action modal when clicking create file button in header', async () => {
@@ -421,7 +461,9 @@ describe('FileExplorer', () => {
     await waitFor(() => {
       expect(screen.getByText(/Убрать папку «backend» из рабочей области\?/)).toBeDefined();
       expect(
-        screen.getByText(/Папка будет убрана из рабочей области. Файлы на диске останутся без изменений./)
+        screen.getByText(
+          /Папка будет убрана из рабочей области. Файлы на диске останутся без изменений./
+        )
       ).toBeDefined();
     });
 

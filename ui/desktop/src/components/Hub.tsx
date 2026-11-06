@@ -7,7 +7,15 @@
  * lives there.
  */
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 import { useLocation } from 'react-router';
 import { defineMessages, useIntl } from '../i18n';
 import { AppEvents } from '../constants/events';
@@ -147,10 +155,14 @@ export default function Hub({
     setNextChatExtensionDraft(draft);
   }, []);
 
-  const handleWorkingDirChange = useCallback((dir: string) => {
-    userSelectedWorkingDirRef.current = true;
-    setWorkingDir(dir);
-  }, []);
+  const handleWorkingDirChange = useCallback(
+    (dir: string) => {
+      userSelectedWorkingDirRef.current = true;
+      setWorkingDir(dir);
+      workspaceContext?.setWorkspacePath(dir);
+    },
+    [workspaceContext]
+  );
 
   const createHubSession = async () => {
     if (isCreatingSession) return null;
@@ -246,7 +258,9 @@ export default function Hub({
             <span className="text-xl sm:text-2xl font-light text-text-secondary">{meridiem}</span>
           ) : null}
         </div>
-        <p className="text-base sm:text-lg lg:text-xl text-text-secondary mb-4 sm:mb-6">{greeting}</p>
+        <p className="text-base sm:text-lg lg:text-xl text-text-secondary mb-4 sm:mb-6">
+          {greeting}
+        </p>
 
         <ChatInputCard>
           <ChatInput

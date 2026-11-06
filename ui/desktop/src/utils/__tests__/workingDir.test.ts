@@ -1,15 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getEffectiveWorkingDir, getInitialWorkingDir, resolveWorkingDir } from '../workingDir';
+import {
+  getEffectiveWorkingDir,
+  getInitialWorkingDir,
+  resolveWorkingDir,
+  setCurrentWindowWorkspacePath,
+} from '../workingDir';
 
 describe('getInitialWorkingDir', () => {
   const appConfigGetMock = vi.fn();
 
   beforeEach(() => {
     localStorage.clear();
+    setCurrentWindowWorkspacePath('');
     appConfigGetMock.mockReset();
     (globalThis as Record<string, unknown>).window = {
       appConfig: { get: appConfigGetMock },
     } as unknown as typeof globalThis;
+  });
+
+  it('prefers the live window workspace over the directory the window was opened with', () => {
+    appConfigGetMock.mockImplementation((key: string) => {
+      if (key === 'REQUEST_DIR') return '/command/line/dir';
+      return undefined;
+    });
+    setCurrentWindowWorkspacePath('/projects/VVGoose');
+    expect(getInitialWorkingDir()).toBe('/projects/VVGoose');
   });
 
   it('prefers REQUEST_DIR if present', () => {
@@ -65,6 +80,7 @@ describe('getEffectiveWorkingDir', () => {
   };
 
   beforeEach(() => {
+    setCurrentWindowWorkspacePath('');
     getSettingMock.mockReset();
     appConfigGetMock.mockReset();
     (globalThis as Record<string, unknown>).window = {

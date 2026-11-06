@@ -1,4 +1,9 @@
-import type { IpcMainInvokeEvent, OpenDialogOptions, OpenDialogReturnValue } from 'electron';
+import type {
+  IpcMainInvokeEvent,
+  MenuItemConstructorOptions,
+  OpenDialogOptions,
+  OpenDialogReturnValue,
+} from 'electron';
 import {
   app,
   App,
@@ -38,6 +43,8 @@ import { expandTilde, sanitizeGoosePathRoot } from './utils/pathUtils';
 import log from './utils/logger';
 import { ensureWinShims } from './utils/winShims';
 import { addRecentDir, loadRecentDirs } from './utils/recentDirs';
+import { loadRecentWorkspaces, saveRecentWorkspaces } from './utils/recentWorkspaces';
+import { workspaceRecentMenuLabel } from './utils/openRecentLabel';
 import { formatAppName, errorMessage, formatErrorForLogging } from './utils/conversionUtils';
 import { isRetiredGooseChatApp } from './utils/retiredApps';
 import type { Settings, SettingKey } from './utils/settings';
@@ -121,7 +128,8 @@ const MENU_TRANSLATIONS_ZH_CN: Record<string, string> = {
   'New Chat': '新建聊天',
   'New Chat Window': '新建聊天窗口',
   'Open Directory...': '打开目录…',
-  'Recent Directories': '最近的目录',
+  'Открыть Workspace': '打开工作区…',
+  'Open Recent': '最近打开',
   'Focus Goose Window': '聚焦 Goose 窗口',
   'Quick Launcher': '快速启动器',
   'Always on Top': '窗口置顶',
@@ -969,6 +977,13 @@ function addWorkspaceRootForWindow(windowId: number, rootPath: string): void {
   }
 }
 
+function setWorkspaceRootsForWindow(windowId: number, roots: string[]): void {
+  const resolved = roots
+    .filter((root) => typeof root === 'string' && root.trim())
+    .map((root) => path.resolve(expandTilde(root)));
+  windowWorkspaces.set(windowId, new Set(resolved));
+}
+
 function getWorkspaceRootsForWindow(windowId: number): string[] {
   const roots: string[] = [];
   const set = windowWorkspaces.get(windowId);
@@ -1018,6 +1033,7 @@ interface CreateChatOptions {
   initialMessage?: string;
   initialMessageNoAutoSubmit?: boolean;
   dir?: string;
+  workspaceFile?: string;
   resumeSessionId?: string;
   viewType?: string;
   recipeDeeplink?: string;
@@ -1034,6 +1050,7 @@ const createChat = async (
     initialMessage,
     initialMessageNoAutoSubmit,
     dir,
+    workspaceFile,
     resumeSessionId,
     viewType,
     recipeDeeplink,
@@ -1094,7 +1111,9 @@ const createChat = async (
   }
 
   const serverSecret = externalBackend ? externalBackend.secret : GENERATED_SECRET;
-  const initialDir = resolveInitialDir(dir);
+  const initialDir = resolveInitialDir(
+    dir ?? (workspaceFile ? path.dirname(workspaceFile) : undefined)
+  );
   let workingDir = resolveWorkingDir(externalBackend?.workingDir, initialDir, os.homedir());
   appConfig.GOOSE_WORKING_DIR = workingDir;
   let gooseServeLease: GooseServeLease | null = null;
@@ -1304,7 +1323,8 @@ const createChat = async (
             GOOSE_EXTERNAL_BACKEND: externalBackend !== null,
             GOOSE_EXTERNAL_BACKEND_URL: externalBackend?.url ?? '',
             GOOSE_EXTERNAL_BACKEND_SOURCE: externalBackend?.source ?? '',
-            REQUEST_DIR: dir,
+            REQUEST_DIR: workspaceFile ? undefined : dir,
+            REQUEST_WORKSPACE_FILE: workspaceFile,
             GOOSE_VERSION: version,
             recipeDeeplink: recipeDeeplink,
             recipeId: recipeId,
@@ -1732,14 +1752,81 @@ const showWindow = async () => {
   });
 };
 
-const buildRecentFilesMenu = () => {
-  const recentDirs = loadRecentDirs();
-  return recentDirs.map((dir) => ({
-    label: dir,
+function sendOpenFolderToWindow(dir: string, target?: BrowserWindow | null): boolean {
+  const currentWindow = target && !target.isDestroyed() ? target : BrowserWindow.getFocusedWindow();
+  if (!currentWindow || currentWindow.isDestroyed() || !windowMap.has(currentWindow.id)) {
+    return false;
+  }
+  addRecentDir(dir);
+  refreshOpenRecentMenu();
+  currentWindow.webContents.send('open-workspace-folder', dir);
+  return true;
+}
+
+function sendOpenCodeWorkspaceToWindow(filePath: string, target?: BrowserWindow | null): boolean {
+  const currentWindow = target && !target.isDestroyed() ? target : BrowserWindow.getFocusedWindow();
+  if (!currentWindow || currentWindow.isDestroyed() || !windowMap.has(currentWindow.id)) {
+    return false;
+  }
+  currentWindow.webContents.send('open-code-workspace', filePath);
+  return true;
+}
+
+let openRecentMenuItem: MenuItem | null = null;
+
+function buildOpenRecentMenuTemplate(): MenuItemConstructorOptions[] {
+  const workspaces = loadRecentWorkspaces();
+  const directories = loadRecentDirs();
+  const items: MenuItemConstructorOptions[] = workspaces.map((workspace) => ({
+    label: workspaceRecentMenuLabel(workspace.name),
     click: async () => {
-      await createChat(app, { dir });
+      if (!sendOpenCodeWorkspaceToWindow(workspace.workspaceFilePath)) {
+        await createChat(app, { workspaceFile: workspace.workspaceFilePath });
+      }
     },
   }));
+
+  if (workspaces.length > 0 && directories.length > 0) {
+    items.push({ type: 'separator' });
+  }
+
+  for (const dir of directories) {
+    items.push({
+      label: dir,
+      click: async () => {
+        if (!sendOpenFolderToWindow(dir)) {
+          await createChat(app, { dir });
+        }
+      },
+    });
+  }
+
+  if (items.length === 0) {
+    items.push({ label: 'No Recent Items', enabled: false });
+  }
+
+  return items;
+}
+
+function refreshOpenRecentMenu(): void {
+  if (!openRecentMenuItem) return;
+  openRecentMenuItem.submenu = Menu.buildFromTemplate(buildOpenRecentMenuTemplate());
+}
+
+const openWorkspaceFileDialog = async (): Promise<void> => {
+  const currentWindow = BrowserWindow.getFocusedWindow();
+  const result = (await dialog.showOpenDialog({
+    title: 'Открыть Workspace',
+    properties: ['openFile'],
+    filters: [{ name: 'Workspace', extensions: ['code-workspace'] }],
+  })) as unknown as OpenDialogReturnValue;
+
+  if (result.canceled || result.filePaths.length === 0) return;
+  const filePath = result.filePaths[0];
+  if (!filePath.endsWith('.code-workspace')) return;
+  if (!sendOpenCodeWorkspaceToWindow(filePath, currentWindow)) {
+    await createChat(app, { workspaceFile: filePath });
+  }
 };
 
 const openDirectoryDialog = async (): Promise<OpenDialogReturnValue> => {
@@ -1817,6 +1904,10 @@ const openDirectoryDialog = async (): Promise<OpenDialogReturnValue> => {
     } catch {
       console.warn(`Could not stat selected path, using parent directory`);
       dirToAdd = path.dirname(selectedPath); // Fallback to parent directory
+    }
+
+    if (sendOpenFolderToWindow(dirToAdd, currentWindow)) {
+      return result;
     }
 
     addRecentDir(dirToAdd);
@@ -1956,7 +2047,26 @@ ipcMain.handle('directory-chooser', async () => {
 ipcMain.handle('add-recent-dir', (_event, dir: string) => {
   if (dir) {
     addRecentDir(dir);
+    refreshOpenRecentMenu();
   }
+});
+
+ipcMain.handle('set-recent-workspaces', (_event, items: unknown) => {
+  if (!Array.isArray(items)) return;
+  const workspaces = items.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as { name?: unknown; workspaceFilePath?: unknown; lastOpened?: unknown };
+    if (typeof record.workspaceFilePath !== 'string' || typeof record.name !== 'string') return [];
+    return [
+      {
+        name: record.name,
+        workspaceFilePath: record.workspaceFilePath,
+        lastOpened: typeof record.lastOpened === 'number' ? record.lastOpened : Date.now(),
+      },
+    ];
+  });
+  saveRecentWorkspaces(workspaces);
+  refreshOpenRecentMenu();
 });
 
 ipcMain.handle('list-recent-dirs', () => {
@@ -2523,6 +2633,28 @@ ipcMain.handle('workspace-start-watching', async (event, workspacePath) => {
   return true;
 });
 
+ipcMain.handle(
+  'set-window-workspace',
+  async (
+    event,
+    payload: { roots?: string[]; primaryRoot?: string; title?: string } | undefined
+  ) => {
+    const senderWindow = requireRegularRendererWindow(event);
+    const roots = Array.isArray(payload?.roots) ? payload.roots : [];
+    setWorkspaceRootsForWindow(senderWindow.id, roots);
+    const primaryRoot =
+      typeof payload?.primaryRoot === 'string' && payload.primaryRoot.trim()
+        ? payload.primaryRoot
+        : roots[0];
+    if (primaryRoot) {
+      await desktopFileAccess.bindWindow(senderWindow.id, primaryRoot);
+    }
+    if (typeof payload?.title === 'string' && payload.title.trim()) {
+      senderWindow.setTitle(payload.title);
+    }
+  }
+);
+
 ipcMain.handle('workspace-stop-watching', async (event) => {
   const senderWindow = requireRegularRendererWindow(event);
   workspaceWatcherManager.stopWatching(senderWindow.id);
@@ -2807,16 +2939,21 @@ async function appMain() {
       );
     }
 
-    const recentFilesSubmenu = buildRecentFilesMenu();
-    if (recentFilesSubmenu.length > 0) {
-      fileMenu.submenu.insert(
-        menuIndex++,
-        new MenuItem({
-          label: menuT('Recent Directories'),
-          submenu: recentFilesSubmenu,
-        })
-      );
-    }
+    fileMenu.submenu.insert(
+      menuIndex++,
+      new MenuItem({
+        label: menuT('Открыть Workspace'),
+        click: () => {
+          void openWorkspaceFileDialog();
+        },
+      })
+    );
+
+    openRecentMenuItem = new MenuItem({
+      label: menuT('Open Recent'),
+      submenu: Menu.buildFromTemplate(buildOpenRecentMenuTemplate()),
+    });
+    fileMenu.submenu.insert(menuIndex++, openRecentMenuItem);
 
     fileMenu.submenu.insert(menuIndex, new MenuItem({ type: 'separator' }));
 

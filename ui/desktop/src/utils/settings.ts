@@ -51,7 +51,7 @@ export interface LastOpenedWorkspaceFolder {
 
 export interface LastOpenedWorkspace {
   path: string;
-  type: 'folder' | 'code-workspace';
+  type: 'folder' | 'code-workspace' | 'untitled';
   folders?: LastOpenedWorkspaceFolder[];
   workspaceFilePath?: string;
   name?: string;

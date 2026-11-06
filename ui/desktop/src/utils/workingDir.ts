@@ -1,4 +1,14 @@
+let currentWindowWorkspacePath = '';
+
+/** The workspace the user is looking at in this window, after startup resolution. */
+export function setCurrentWindowWorkspacePath(path: string): void {
+  currentWindowWorkspacePath = path.trim();
+}
+
 export const getInitialWorkingDir = (): string => {
+  if (currentWindowWorkspacePath) {
+    return currentWindowWorkspacePath;
+  }
   const requestDir = window.appConfig?.get('REQUEST_DIR') as string | undefined;
   if (requestDir?.trim()) {
     return requestDir.trim();

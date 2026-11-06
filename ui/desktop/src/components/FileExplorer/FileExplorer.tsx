@@ -157,7 +157,8 @@ export const FileExplorer: React.FC = () => {
   const {
     workspacePath,
     workspaceFolders,
-    setWorkspaceFolders,
+    workspaceName,
+    workspaceKind,
     selectedFile,
     setSelectedFile,
     openFolderDialog,
@@ -166,7 +167,7 @@ export const FileExplorer: React.FC = () => {
     refreshWorkspace,
     openFile,
     closeFile,
-    openFiles,
+    removeWorkspaceFolder,
   } = useWorkspace();
 
   const effectiveFolders = useMemo<WorkspaceFolderInfo[]>(() => {
@@ -270,6 +271,17 @@ export const FileExplorer: React.FC = () => {
     },
     []
   );
+
+  const rootsKey = effectiveFolders.map((folder) => folder.path).join('\n');
+  const previousRootsKey = useRef(rootsKey);
+
+  useEffect(() => {
+    if (previousRootsKey.current === rootsKey) return;
+    previousRootsKey.current = rootsKey;
+    nodeLookupRef.current = new Map();
+    setDirChildren(new Map());
+    setExpandedDirs(new Set(effectiveFolders.map((folder) => folder.path)));
+  }, [effectiveFolders, rootsKey]);
 
   // Refresh root folders and all currently expanded directories
   useEffect(() => {
@@ -448,25 +460,14 @@ export const FileExplorer: React.FC = () => {
           void openFile(newPath);
         }
       } else if (type === 'remove-folder') {
-        const remainingFolders = effectiveFolders.filter((f) => f.path !== targetPath);
-        setWorkspaceFolders(remainingFolders);
-        openFiles?.forEach((file) => {
-          if (
-            file.path === targetPath ||
-            file.path.startsWith(targetPath + '/') ||
-            file.path.startsWith(targetPath + '\\')
-          ) {
-            closeFile(file.path);
-          }
-        });
+        removeWorkspaceFolder(targetPath);
       } else if (type === 'delete') {
         const isRootTarget = targetNode
           ? isRootNode(targetNode)
           : effectiveFolders.some((f) => f.path === targetPath);
         if (isRootTarget) {
           if (effectiveFolders.length > 1) {
-            const remainingFolders = effectiveFolders.filter((f) => f.path !== targetPath);
-            setWorkspaceFolders(remainingFolders);
+            removeWorkspaceFolder(targetPath);
           }
           return;
         }
@@ -514,10 +515,12 @@ export const FileExplorer: React.FC = () => {
   }, [effectiveFolders, expandedDirs, dirChildren, hideIgnored]);
 
   const workspaceTitle = useMemo(() => {
+    if (workspaceKind === 'code-workspace' && workspaceName) return workspaceName;
     if (effectiveFolders.length === 0) return 'Рабочее пространство';
     if (effectiveFolders.length === 1) return effectiveFolders[0].name;
-    return `${effectiveFolders.length} папок`;
-  }, [effectiveFolders]);
+    if (workspaceKind === 'untitled') return `${effectiveFolders.length} папок`;
+    return workspaceName || effectiveFolders[0].name;
+  }, [effectiveFolders, workspaceKind, workspaceName]);
 
   const primaryRootPath = effectiveFolders[0]?.path || '';
 
@@ -574,20 +577,6 @@ export const FileExplorer: React.FC = () => {
           >
             <RotateCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
           </button>
-          <button
-            onClick={openFolderDialog}
-            className="text-[11px] px-2 py-0.5 bg-background-tertiary hover:bg-border-primary border border-border-primary rounded text-text-primary transition-colors"
-            title="Открыть папку"
-          >
-            Папка...
-          </button>
-          <button
-            onClick={openWorkspaceFileDialog}
-            className="text-[11px] px-2 py-0.5 bg-background-tertiary hover:bg-border-primary border border-border-primary rounded text-text-primary transition-colors"
-            title="Открыть файл .code-workspace"
-          >
-            Workspace...
-          </button>
         </div>
       </div>
 
@@ -625,7 +614,8 @@ export const FileExplorer: React.FC = () => {
               if (!item) return null;
               const isExpanded = expandedDirs.has(item.node.path);
               const children = dirChildren.get(item.node.path) || [];
-              const isEmptyDir = item.node.isDirectory && isExpanded && children.length === 0 && !isLoading;
+              const isEmptyDir =
+                item.node.isDirectory && isExpanded && children.length === 0 && !isLoading;
 
               return (
                 <div key={item.node.path}>

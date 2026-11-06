@@ -19,12 +19,37 @@ import { parseCodeWorkspace } from '../utils/codeWorkspace';
 import { AppEvents } from '../constants/events';
 import { toastError } from '../toasts';
 import type { LastOpenedWorkspace } from '../utils/settings';
+import { setCurrentWindowWorkspacePath } from '../utils/workingDir';
+import { syncActiveSessionWorkingDir } from '../utils/workspaceSessionSync';
+import {
+  emptyWorkspace,
+  isPathInside,
+  readCachedWorkspace,
+  resolveInitialWorkspace,
+  sameWorkspace,
+  toLastOpened,
+  withAddedFolder,
+  withRemovedFolder,
+  workspaceFromCodeWorkspace,
+  workspaceFromFolder,
+  workspaceFromSaved,
+  WORKSPACE_STATE_KEY,
+  type WindowWorkspace,
+  type WorkspaceKind,
+} from '../utils/windowWorkspace';
 
 interface WorkspaceContextType {
   workspacePath: string;
   setWorkspacePath: (newPath: string) => void;
   workspaceFolders: WorkspaceFolderInfo[];
   setWorkspaceFolders: (folders: WorkspaceFolderInfo[]) => void;
+  workspaceName: string;
+  workspaceKind: WorkspaceKind;
+  workspaceFilePath?: string;
+  openFolder: (folderPath: string, options?: { syncActiveSession?: boolean }) => Promise<void>;
+  addWorkspaceFolder: (folderPath: string) => void;
+  removeWorkspaceFolder: (folderPath: string) => void;
+  openAddFolderDialog: () => Promise<string | null>;
   selectedFile: string | null;
   setSelectedFile: (filePath: string | null) => void;
   openFolderDialog: () => Promise<string | null>;
@@ -68,6 +93,24 @@ export const WorkspaceContext = createContext<WorkspaceContextType | null>(null)
 
 const STORAGE_KEY = 'goose_workspace_path';
 const WORKSPACE_FOLDERS_KEY = 'goose_workspace_folders';
+
+function readConfigString(key: string): string {
+  try {
+    const value = window.appConfig?.get(key);
+    return typeof value === 'string' ? value.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function readInitialWindowWorkspace(): WindowWorkspace {
+  if (readConfigString('REQUEST_WORKSPACE_FILE')) return emptyWorkspace();
+  return resolveInitialWorkspace({
+    requestDir: readConfigString('REQUEST_DIR'),
+    cached: readCachedWorkspace(),
+    workingDir: readConfigString('GOOSE_WORKING_DIR'),
+  });
+}
 const CHAT_WIDTH_KEY = 'goose_chat_width';
 const CHAT_VISIBLE_KEY = 'goose_chat_visible';
 const EDITOR_VISIBLE_KEY = 'goose_editor_visible';
@@ -78,85 +121,22 @@ const DEFAULT_CHAT_WIDTH = 420;
 const DEFAULT_EXPLORER_WIDTH = 280;
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [workspacePath, setWorkspacePathState] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return saved;
-      const appWorkingDir = window.appConfig?.get('GOOSE_WORKING_DIR') as string;
-      if (appWorkingDir) return appWorkingDir;
-      return '';
-    } catch {
-      return (window.appConfig?.get('GOOSE_WORKING_DIR') as string) || '';
-    }
+  const [workspace, setWorkspace] = useState<WindowWorkspace>(() => {
+    const initial = readInitialWindowWorkspace();
+    setCurrentWindowWorkspacePath(initial.path);
+    return initial;
   });
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
+  const userChoseWorkspaceRef = useRef(
+    Boolean(readConfigString('REQUEST_DIR') || readConfigString('REQUEST_WORKSPACE_FILE'))
+  );
 
-  const [workspaceFolders, setWorkspaceFoldersState] = useState<WorkspaceFolderInfo[]>(() => {
-    try {
-      const saved = localStorage.getItem(WORKSPACE_FOLDERS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-      const singlePath =
-        localStorage.getItem(STORAGE_KEY) ||
-        (window.appConfig?.get('GOOSE_WORKING_DIR') as string) ||
-        '';
-      if (singlePath) {
-        const name = singlePath.split(/[/\\]/).filter(Boolean).pop() || singlePath;
-        return [{ path: singlePath, name }];
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  });
-
-  const setWorkspaceFolders = useCallback((folders: WorkspaceFolderInfo[]) => {
-    setWorkspaceFoldersState(folders);
-    try {
-      localStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(folders));
-    } catch {
-      // Ignore storage errors
-    }
-  }, []);
-
-  // Restore saved lastOpenedWorkspace on mount if available
-  useEffect(() => {
-    if (!window.electron?.getSetting) return;
-    window.electron
-      .getSetting('lastOpenedWorkspace')
-      .then((saved) => {
-        if (!saved || !saved.path) return;
-        setWorkspacePathState((prev) => {
-          if (!prev) {
-            try {
-              localStorage.setItem(STORAGE_KEY, saved.path);
-            } catch {
-              // Ignore
-            }
-            return saved.path;
-          }
-          return prev;
-        });
-        if (saved.folders && saved.folders.length > 0) {
-          setWorkspaceFoldersState((prev) => {
-            if (
-              prev.length === 0 ||
-              (saved.type === 'code-workspace' && prev.length <= 1 && saved.folders!.length > 1)
-            ) {
-              try {
-                localStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(saved.folders));
-              } catch {
-                // Ignore
-              }
-              return saved.folders!;
-            }
-            return prev;
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const workspacePath = workspace.path;
+  const workspaceFolders = workspace.folders;
+  const workspaceName = workspace.name;
+  const workspaceKind = workspace.kind;
+  const workspaceFilePath = workspace.workspaceFilePath;
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
@@ -264,17 +244,20 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
-  const setIsExplorerVisible = useCallback<React.Dispatch<React.SetStateAction<boolean>>>((value) => {
-    setIsExplorerVisibleState((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      try {
-        localStorage.setItem(EXPLORER_VISIBLE_KEY, String(next));
-      } catch {
-        // Ignore storage errors
-      }
-      return next;
-    });
-  }, []);
+  const setIsExplorerVisible = useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
+    (value) => {
+      setIsExplorerVisibleState((prev) => {
+        const next = typeof value === 'function' ? value(prev) : value;
+        try {
+          localStorage.setItem(EXPLORER_VISIBLE_KEY, String(next));
+        } catch {
+          // Ignore storage errors
+        }
+        return next;
+      });
+    },
+    []
+  );
 
   const [explorerWidth, setExplorerWidthState] = useState<number>(() => {
     try {
@@ -345,6 +328,20 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     []
   );
 
+  useEffect(() => {
+    const publish = window.electron?.setRecentWorkspaces;
+    if (!publish) return;
+    void publish(
+      recentWorkspaces
+        .filter((item) => item.isWorkspaceFile && item.workspaceFilePath)
+        .map((item) => ({
+          name: item.name,
+          workspaceFilePath: item.workspaceFilePath as string,
+          lastOpened: item.lastOpened,
+        }))
+    ).catch(() => {});
+  }, [recentWorkspaces]);
+
   const closeAllFiles = useCallback(() => {
     setOpenFiles([]);
     setActiveFilePath(null);
@@ -352,64 +349,227 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setPendingDiff(null);
   }, []);
 
-  const saveLastOpenedWorkspace = useCallback((workspace: LastOpenedWorkspace) => {
+  const saveLastOpenedWorkspace = useCallback((opened: LastOpenedWorkspace) => {
     if (window.electron?.setSetting) {
-      window.electron.setSetting('lastOpenedWorkspace', workspace).catch(() => {});
+      window.electron.setSetting('lastOpenedWorkspace', opened).catch(() => {});
     }
   }, []);
 
-  const setWorkspacePath = useCallback(
-    (newPath: string) => {
-      // Tabs from the previous root can no longer be saved under the new one
-      closeAllFiles();
-      setWorkspacePathState(newPath);
-      const folders: WorkspaceFolderInfo[] = newPath
-        ? [{ path: newPath, name: newPath.split(/[/\\]/).filter(Boolean).pop() || newPath }]
-        : [];
-      setWorkspaceFolders(folders);
+  const persistWorkspace = useCallback(
+    (next: WindowWorkspace) => {
+      setCurrentWindowWorkspacePath(next.path);
       try {
-        localStorage.setItem(STORAGE_KEY, newPath);
+        localStorage.setItem(STORAGE_KEY, next.path);
+        localStorage.setItem(WORKSPACE_FOLDERS_KEY, JSON.stringify(next.folders));
+        localStorage.setItem(WORKSPACE_STATE_KEY, JSON.stringify(next));
       } catch {
         // Ignore storage errors
       }
-      if (newPath) {
-        addRecentWorkspace(newPath, undefined, false, undefined, folders);
-        saveLastOpenedWorkspace({
-          path: newPath,
-          type: 'folder',
-          folders,
-          name: folders[0]?.name,
-        });
+      if (next.path) {
+        saveLastOpenedWorkspace(toLastOpened(next));
+      }
+      const publish = window.electron?.setWindowWorkspace;
+      if (publish && next.path) {
+        void publish({
+          roots: next.folders.map((folder) => folder.path),
+          primaryRoot: next.path,
+          title: next.name,
+        }).catch(() => {});
       }
     },
-    [addRecentWorkspace, closeAllFiles, saveLastOpenedWorkspace, setWorkspaceFolders]
+    [saveLastOpenedWorkspace]
+  );
+
+  const applyWindowWorkspace = useCallback(
+    async (
+      next: WindowWorkspace,
+      options?: {
+        syncActiveSession?: boolean;
+        recordRecent?: boolean;
+        closeEditors?: boolean;
+        markUserChoice?: boolean;
+      }
+    ) => {
+      const previous = workspaceRef.current;
+      const changed = !sameWorkspace(previous, next);
+      if (options?.markUserChoice !== false) {
+        userChoseWorkspaceRef.current = true;
+      }
+      workspaceRef.current = next;
+      setWorkspace(next);
+      if (changed && options?.closeEditors !== false) {
+        closeAllFiles();
+      }
+      persistWorkspace(next);
+      if (options?.recordRecent !== false && next.path) {
+        addRecentWorkspace(
+          next.path,
+          next.name,
+          next.kind === 'code-workspace',
+          next.workspaceFilePath,
+          next.folders
+        );
+      }
+      if (changed) {
+        refreshWorkspace();
+      }
+      if (options?.syncActiveSession !== false && next.path) {
+        try {
+          await syncActiveSessionWorkingDir(next.path);
+        } catch (error) {
+          toastError({
+            title: 'Не удалось сменить директорию агента',
+            msg: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    },
+    [addRecentWorkspace, closeAllFiles, persistWorkspace, refreshWorkspace]
+  );
+
+  const applyWindowWorkspaceRef = useRef(applyWindowWorkspace);
+  applyWindowWorkspaceRef.current = applyWindowWorkspace;
+  const openCodeWorkspaceRef = useRef<(filePath: string) => Promise<boolean>>(async () => false);
+
+  useEffect(() => {
+    if (userChoseWorkspaceRef.current || !window.electron?.getSetting) return;
+    let cancelled = false;
+    window.electron
+      .getSetting('lastOpenedWorkspace')
+      .then((saved) => {
+        if (cancelled || userChoseWorkspaceRef.current) return;
+        const restored = workspaceFromSaved(saved);
+        if (!restored) return;
+        void applyWindowWorkspaceRef.current(restored, {
+          syncActiveSession: true,
+          recordRecent: false,
+          closeEditors: false,
+          markUserChoice: false,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const current = workspaceRef.current;
+    const publish = window.electron?.setWindowWorkspace;
+    if (!current.path || !publish) return;
+    void publish({
+      roots: current.folders.map((folder) => folder.path),
+      primaryRoot: current.path,
+      title: current.name,
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!window.electron?.on || !window.electron?.off) return;
+    const handleOpenFolder = (_event: unknown, ...args: unknown[]) => {
+      const folderPath = args[0];
+      if (typeof folderPath !== 'string' || !folderPath.trim()) return;
+      void applyWindowWorkspaceRef.current(workspaceFromFolder(folderPath));
+    };
+    const handleOpenCodeWorkspace = (_event: unknown, ...args: unknown[]) => {
+      const filePath = args[0];
+      if (typeof filePath !== 'string' || !filePath.endsWith('.code-workspace')) return;
+      void openCodeWorkspaceRef.current(filePath);
+    };
+    window.electron.on('open-workspace-folder', handleOpenFolder);
+    window.electron.on('open-code-workspace', handleOpenCodeWorkspace);
+    const requestedWorkspaceFile = readConfigString('REQUEST_WORKSPACE_FILE');
+    if (requestedWorkspaceFile) {
+      void openCodeWorkspaceRef.current(requestedWorkspaceFile);
+    }
+    return () => {
+      window.electron.off('open-workspace-folder', handleOpenFolder);
+      window.electron.off('open-code-workspace', handleOpenCodeWorkspace);
+    };
+  }, []);
+
+  const openFolder = useCallback(
+    (folderPath: string, options?: { syncActiveSession?: boolean }) =>
+      applyWindowWorkspace(folderPath.trim() ? workspaceFromFolder(folderPath) : emptyWorkspace(), {
+        syncActiveSession: options?.syncActiveSession,
+      }),
+    [applyWindowWorkspace]
+  );
+
+  const setWorkspacePath = useCallback(
+    (newPath: string) => {
+      void openFolder(newPath);
+    },
+    [openFolder]
+  );
+
+  const addWorkspaceFolder = useCallback(
+    (folderPath: string) => {
+      void applyWindowWorkspace(withAddedFolder(workspaceRef.current, folderPath), {
+        closeEditors: false,
+      });
+    },
+    [applyWindowWorkspace]
+  );
+
+  const removeWorkspaceFolder = useCallback(
+    (folderPath: string) => {
+      const remaining = openFilesRef.current.filter((file) => !isPathInside(folderPath, file.path));
+      setOpenFiles(remaining);
+      setActiveFilePath((current) =>
+        current && remaining.some((file) => file.path === current)
+          ? current
+          : (remaining[0]?.path ?? null)
+      );
+      setSelectedFile((current) =>
+        current && remaining.some((file) => file.path === current)
+          ? current
+          : (remaining[0]?.path ?? null)
+      );
+      void applyWindowWorkspace(withRemovedFolder(workspaceRef.current, folderPath), {
+        closeEditors: false,
+      });
+    },
+    [applyWindowWorkspace]
+  );
+
+  const setWorkspaceFolders = useCallback(
+    (folders: WorkspaceFolderInfo[]) => {
+      if (folders.length === 0) {
+        void applyWindowWorkspace(emptyWorkspace(), { syncActiveSession: false });
+        return;
+      }
+      if (folders.length === 1) {
+        void applyWindowWorkspace(workspaceFromFolder(folders[0].path), { closeEditors: false });
+        return;
+      }
+      const current = workspaceRef.current;
+      void applyWindowWorkspace(
+        {
+          kind: current.kind === 'code-workspace' ? 'code-workspace' : 'untitled',
+          path: folders.some((folder) => folder.path === current.path)
+            ? current.path
+            : folders[0].path,
+          name: current.kind === 'code-workspace' ? current.name : current.name || folders[0].name,
+          folders,
+          workspaceFilePath:
+            current.kind === 'code-workspace' ? current.workspaceFilePath : undefined,
+        },
+        { closeEditors: false }
+      );
+    },
+    [applyWindowWorkspace]
   );
 
   const openCodeWorkspace = useCallback(
-    async (workspaceFilePath: string): Promise<boolean> => {
+    async (filePath: string): Promise<boolean> => {
       if (!window.electron?.workspaceReadFile) return false;
       try {
-        const res = await window.electron.workspaceReadFile(workspaceFilePath);
+        const res = await window.electron.workspaceReadFile(filePath);
         if (res && res.found && res.content) {
-          const parsed = parseCodeWorkspace(res.content, workspaceFilePath);
+          const parsed = parseCodeWorkspace(res.content, filePath);
           if (parsed) {
-            closeAllFiles();
-            setWorkspacePathState(parsed.rootPath);
-            setWorkspaceFolders(parsed.folders);
-            try {
-              localStorage.setItem(STORAGE_KEY, parsed.rootPath);
-            } catch {
-              // Ignore
-            }
-            addRecentWorkspace(parsed.rootPath, parsed.name, true, workspaceFilePath, parsed.folders);
-            saveLastOpenedWorkspace({
-              path: parsed.rootPath,
-              type: 'code-workspace',
-              workspaceFilePath,
-              folders: parsed.folders,
-              name: parsed.name,
-            });
-            refreshWorkspace();
+            await applyWindowWorkspace(workspaceFromCodeWorkspace(parsed, filePath));
             return true;
           }
         }
@@ -426,29 +586,28 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return false;
       }
     },
-    [addRecentWorkspace, closeAllFiles, refreshWorkspace, saveLastOpenedWorkspace, setWorkspaceFolders]
+    [applyWindowWorkspace]
   );
+  openCodeWorkspaceRef.current = openCodeWorkspace;
 
   const openRecentWorkspace = useCallback(
-    async (workspace: RecentWorkspace) => {
-      if (workspace.isWorkspaceFile && workspace.workspaceFilePath) {
-        await openCodeWorkspace(workspace.workspaceFilePath);
-      } else {
-        setWorkspacePath(workspace.path);
-        if (workspace.folders && workspace.folders.length > 0) {
-          setWorkspaceFolders(workspace.folders);
-          saveLastOpenedWorkspace({
-            path: workspace.path,
-            type: 'folder',
-            folders: workspace.folders,
-            name: workspace.name,
-          });
-        }
-        setSelectedFile(null);
-        refreshWorkspace();
+    async (recent: RecentWorkspace) => {
+      if (recent.isWorkspaceFile && recent.workspaceFilePath) {
+        await openCodeWorkspace(recent.workspaceFilePath);
+        return;
       }
+      if (recent.folders && recent.folders.length > 1) {
+        await applyWindowWorkspace({
+          kind: 'untitled',
+          path: recent.path,
+          name: recent.name,
+          folders: recent.folders,
+        });
+        return;
+      }
+      await openFolder(recent.path);
     },
-    [openCodeWorkspace, saveLastOpenedWorkspace, setWorkspacePath, setWorkspaceFolders, refreshWorkspace]
+    [applyWindowWorkspace, openCodeWorkspace, openFolder]
   );
 
   // Listen for file changes from Electron main process with debounce
@@ -484,9 +643,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const isWorkspaceFile = kind === 'code-workspace';
         const selected = await window.electron.selectFileOrDirectory(
           workspacePath || undefined,
-          isWorkspaceFile
-            ? { mode: 'file', extensions: ['code-workspace'] }
-            : { mode: 'directory' }
+          isWorkspaceFile ? { mode: 'file', extensions: ['code-workspace'] } : { mode: 'directory' }
         );
         if (!selected) return null;
 
@@ -525,6 +682,24 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     () => selectAndOpenWorkspace('code-workspace'),
     [selectAndOpenWorkspace]
   );
+
+  const openAddFolderDialog = useCallback(async (): Promise<string | null> => {
+    if (!window.electron?.selectFileOrDirectory) return null;
+    try {
+      const selected = await window.electron.selectFileOrDirectory(workspacePath || undefined, {
+        mode: 'directory',
+      });
+      if (!selected) return null;
+      addWorkspaceFolder(selected);
+      return selected;
+    } catch (error) {
+      toastError({
+        title: 'Ошибка выбора папки',
+        msg: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }, [addWorkspaceFolder, workspacePath]);
 
   const openFile = useCallback(
     async (filePath: string, options?: { allowNew?: boolean; initialContent?: string }) => {
@@ -820,6 +995,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setWorkspacePath,
       workspaceFolders,
       setWorkspaceFolders,
+      workspaceName,
+      workspaceKind,
+      workspaceFilePath,
+      openFolder,
+      addWorkspaceFolder,
+      removeWorkspaceFolder,
+      openAddFolderDialog,
       selectedFile,
       setSelectedFile,
       openFolderDialog,
@@ -860,6 +1042,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setWorkspacePath,
       workspaceFolders,
       setWorkspaceFolders,
+      workspaceName,
+      workspaceKind,
+      workspaceFilePath,
+      openFolder,
+      addWorkspaceFolder,
+      removeWorkspaceFolder,
+      openAddFolderDialog,
       selectedFile,
       setSelectedFile,
       openFolderDialog,
