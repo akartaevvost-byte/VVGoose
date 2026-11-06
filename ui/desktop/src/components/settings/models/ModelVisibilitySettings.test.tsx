@@ -146,8 +146,8 @@ describe('ModelVisibilitySettings', () => {
           default_model: 'auto',
           known_models: [{ name: 'auto' }],
         },
-      } as unknown as ProviderDetails,
-    ]);
+      },
+    ] as unknown as ProviderDetails[]);
 
     render(
       <IntlTestWrapper>

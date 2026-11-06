@@ -99,13 +99,19 @@ export const ModelAndProviderProvider: React.FC<ModelAndProviderProviderProps> =
 
       try {
         if (sessionId) {
-          const applied = await acpSetSessionProviderModel(
-            sessionId,
-            providerName,
-            modelName,
-            model.request_params?.thinking_effort ?? null
-          );
-          patchAcpSessionProviderModel(sessionId, applied);
+          try {
+            const applied = await acpSetSessionProviderModel(
+              sessionId,
+              providerName,
+              modelName,
+              model.request_params?.thinking_effort ?? null
+            );
+            patchAcpSessionProviderModel(sessionId, applied);
+          } catch (sessionError) {
+            console.warn(
+              `Session provider update failed, continuing with global defaults: ${sessionError}`
+            );
+          }
         }
 
         // Always update the global config default and Electron settings,

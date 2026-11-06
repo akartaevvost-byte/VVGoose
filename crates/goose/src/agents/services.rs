@@ -1319,9 +1319,11 @@ impl StateMachineServices {
         if crate::providers::get_from_registry(&provider_name)
             .await
             .is_ok()
+            && self
+                .switch_provider(&session.id, &provider_name, model_config.clone())
+                .await
+                .is_ok()
         {
-            self.switch_provider(&session.id, &provider_name, model_config)
-                .await?;
             return Ok(false);
         }
 

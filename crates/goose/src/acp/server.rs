@@ -2344,22 +2344,31 @@ impl AcpConnection {
         model_id: &str,
     ) -> Result<(), agent_client_protocol::Error> {
         self.open_session(session_id).await?;
-        let current_provider = self
+        let session = self
             .services
-            .provider(session_id)
+            .session_manager
+            .get_session(session_id, false)
             .await
-            .internal_err_ctx("Failed to get provider")?;
-        let provider_name = current_provider.get_name().to_string();
+            .internal_err()?;
+        let current_provider = self.services.provider(session_id).await.ok();
+        let provider_name = current_provider
+            .as_ref()
+            .map(|p| p.get_name().to_string())
+            .or_else(|| session.provider_name.clone())
+            .unwrap_or_else(|| {
+                crate::agents::provider_manager::provider_name_for(&session)
+                    .unwrap_or_else(|_| DEFAULT_PROVIDER_ID.to_string())
+            });
         let current_model_config = self
             .services
             .model_config_for_session(session_id)
             .await
-            .internal_err_ctx("Failed to resolve model config")?;
+            .ok();
         let model_config =
             crate::model_config::model_config_from_user_config_with_session_settings(
                 &provider_name,
                 model_id,
-                Some(&current_model_config),
+                current_model_config.as_ref(),
                 None,
                 None,
             )
@@ -2382,17 +2391,20 @@ impl AcpConnection {
             .await
             .internal_err()?;
         self.open_session(&session_id.0).await?;
-        let provider = self
-            .services
-            .provider(&session_id.0)
-            .await
-            .internal_err_ctx("Failed to get provider")?;
-        let provider_name = provider.get_name().to_string();
+        let current_provider = self.services.provider(&session_id.0).await.ok();
+        let provider_name = current_provider
+            .as_ref()
+            .map(|p| p.get_name().to_string())
+            .or_else(|| session.provider_name.clone())
+            .unwrap_or_else(|| {
+                crate::agents::provider_manager::provider_name_for(&session)
+                    .unwrap_or_else(|_| DEFAULT_PROVIDER_ID.to_string())
+            });
         let current_model_config = self
             .services
             .model_config_for_session(&session_id.0)
             .await
-            .internal_err_ctx("Failed to resolve model config")?;
+            .unwrap_or_else(|_| goose_providers::model::ModelConfig::new(ACP_CURRENT_MODEL));
         let current_model = current_model_config.model_name.clone();
         let goose_mode = self
             .services
@@ -2413,13 +2425,17 @@ impl AcpConnection {
         let model_state = build_model_state(current_model.as_str(), &inventory);
         let mode_state = build_mode_state(goose_mode)?;
         let provider_options = build_provider_options(Some(&provider_name)).await;
+        let effort_support = current_provider
+            .as_ref()
+            .map(|p| p.thinking_effort_support())
+            .unwrap_or(goose_providers::thinking::ThinkingEffortSupport::Unsupported);
         let config_options = build_config_options(
             &mode_state,
             &model_state,
             &current_model_config,
             session_provider_selection(&session),
             provider_options,
-            &provider.thinking_effort_support(),
+            &effort_support,
         );
         let notification = SessionNotification::new(
             session_id.clone(),
@@ -2473,18 +2489,30 @@ impl AcpConnection {
     ) -> Result<(), agent_client_protocol::Error> {
         let config = self.config()?;
         self.open_session(session_id).await?;
-        let current_provider = self
+        let session = self
             .services
-            .provider(session_id)
+            .session_manager
+            .get_session(session_id, false)
             .await
-            .internal_err_ctx("Failed to get provider")?;
-        let current_provider_name = current_provider.get_name();
+            .internal_err()?;
+        let current_provider = self.services.provider(session_id).await.ok();
+        let current_provider_name = current_provider
+            .as_ref()
+            .map(|p| p.get_name().to_string())
+            .or_else(|| session.provider_name.clone())
+            .unwrap_or_else(|| {
+                crate::agents::provider_manager::provider_name_for(&session)
+                    .unwrap_or_else(|_| DEFAULT_PROVIDER_ID.to_string())
+            });
         let current_model_config = self
             .services
             .model_config_for_session(session_id)
             .await
-            .internal_err_ctx("Failed to resolve model config")?;
-        let current_model = current_model_config.model_name.clone();
+            .ok();
+        let current_model = current_model_config
+            .as_ref()
+            .map(|c| c.model_name.clone())
+            .unwrap_or_default();
         let use_default_provider = provider_name == DEFAULT_PROVIDER_ID;
         let resolved_provider_name = if use_default_provider {
             config
@@ -2514,7 +2542,7 @@ impl AcpConnection {
             crate::model_config::model_config_from_user_config_with_session_settings(
                 &resolved_provider_name,
                 model,
-                Some(&current_model_config),
+                current_model_config.as_ref(),
                 request_params,
                 context_limit,
             )

@@ -59,12 +59,11 @@ impl AcpConnection {
 
         let extension_results = self.prepare_acp_session(cx, &goose_session).await?;
         self.register_acp_session(goose_session.id.clone()).await;
-        let provider = self
-            .services
-            .provider(&goose_session.id)
-            .await
-            .internal_err_ctx("Failed to get provider while forking ACP session")?;
-        resume_saved_provider_session(&provider, goose_session.conversation.as_ref()).await;
+        if let Ok(provider) = self.services.provider(&goose_session.id).await {
+            resume_saved_provider_session(&provider, goose_session.conversation.as_ref()).await;
+        } else {
+            tracing::warn!(session_id = %goose_session.id, "Failed to get provider while forking ACP session");
+        }
         let effort_support = agent_thinking_effort_support(&self.services, &goose_session.id).await;
 
         let acp_session_id = SessionId::new(new_session_id.clone());
