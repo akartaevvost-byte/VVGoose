@@ -12,6 +12,7 @@ import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext
 import { Navigation } from './NavigationPanel';
 import { EditorArea } from '../Editor/EditorArea';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
+import { Z_INDEX } from './constants';
 import { cn } from '../../utils';
 import { UserInput } from '../../types/message';
 import type { LiveVoiceController } from '../../liveVoice/useLiveVoice';
@@ -247,28 +248,33 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   return (
     <div className="flex flex-col flex-1 w-full h-full relative animate-fade-in bg-background-primary overflow-hidden">
       {/* Workspace Top Header Bar */}
-      <div className="h-9 w-full flex items-center justify-between px-3 border-b border-border-primary/40 bg-background-secondary/30 select-none flex-shrink-0 z-30">
+      <div
+        style={{ zIndex: Z_INDEX.HEADER }}
+        className="h-9 w-full flex items-center justify-between px-3 border-b border-border-primary/40 bg-background-secondary/30 select-none flex-shrink-0 app-drag-region relative"
+      >
         {/* Left Section: Traffic light spacing on macOS + Navigation sidebar toggle */}
-        <div className={cn('flex items-center gap-1.5', needsTrafficLightInset ? 'pl-[76px]' : 'pl-1')}>
+        <div className={cn('flex items-center gap-1.5 no-drag', needsTrafficLightInset ? 'pl-[76px]' : 'pl-1')}>
           <Button
             onClick={() => setIsNavExpanded(!isNavExpanded)}
-            className="no-drag hover:!bg-background-tertiary h-7 w-7 p-0 flex items-center justify-center text-text-secondary hover:text-text-primary"
+            onMouseDown={(e) => e.stopPropagation()}
+            className="no-drag hover:!bg-background-tertiary h-7 w-7 p-0 flex items-center justify-center text-text-secondary hover:text-text-primary cursor-pointer"
             variant="ghost"
             size="xs"
             title={navToggleTitle}
             aria-label={navToggleTitle}
           >
-            <PanelLeft className="w-4 h-4" />
+            <PanelLeft className="w-4 h-4 pointer-events-none" />
           </Button>
         </div>
 
         {/* Right Section: Workspace toggles */}
         {isMainWorkspaceRoute && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 no-drag">
             <Button
               onClick={() => setIsEditorVisible((v) => !v)}
+              onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                'no-drag h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors',
+                'no-drag h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors cursor-pointer',
                 isEditorVisible
                   ? 'bg-background-tertiary text-text-primary font-medium'
                   : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
@@ -278,13 +284,14 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
               title={editorToggleTitle}
               aria-label={editorToggleTitle}
             >
-              <Columns2 className="w-3.5 h-3.5" />
-              <span className="text-[11px]">Редактор</span>
+              <Columns2 className="w-3.5 h-3.5 pointer-events-none" />
+              <span className="text-[11px] pointer-events-none">Редактор</span>
             </Button>
             <Button
               onClick={() => setIsExplorerVisible((v) => !v)}
+              onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                'no-drag h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors',
+                'no-drag h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors cursor-pointer',
                 isExplorerVisible
                   ? 'bg-background-tertiary text-text-primary font-medium'
                   : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
@@ -294,8 +301,8 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
               title={explorerToggleTitle}
               aria-label={explorerToggleTitle}
             >
-              <FolderTree className="w-3.5 h-3.5" />
-              <span className="text-[11px]">Файлы</span>
+              <FolderTree className="w-3.5 h-3.5 pointer-events-none" />
+              <span className="text-[11px] pointer-events-none">Файлы</span>
             </Button>
           </div>
         )}

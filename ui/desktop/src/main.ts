@@ -961,16 +961,29 @@ let appConfig = {
 
 const windowMap = new Map<number, BrowserWindow>();
 const appWindows = new Map<string, BrowserWindow>();
-const windowWorkspaces = new Map<number, string>();
+const windowWorkspaces = new Map<number, Set<string>>();
 const desktopFileAccess = new DesktopFileAccess();
 
-function getWorkspaceRootsForSender(senderId: number): string[] {
+function addWorkspaceRootForWindow(windowId: number, rootPath: string): void {
+  const resolved = path.resolve(expandTilde(rootPath));
+  const existing = windowWorkspaces.get(windowId);
+  if (existing) {
+    existing.add(resolved);
+  } else {
+    windowWorkspaces.set(windowId, new Set([resolved]));
+  }
+}
+
+function getWorkspaceRootsForWindow(windowId: number): string[] {
   const roots: string[] = [];
-  const windowRoot = windowWorkspaces.get(senderId);
-  if (windowRoot) roots.push(windowRoot);
-  const watcherRoots = workspaceWatcherManager.getWorkspacePaths(senderId);
+  const set = windowWorkspaces.get(windowId);
+  if (set) {
+    roots.push(...set);
+  }
+  const watcherRoots = workspaceWatcherManager.getWorkspacePaths(windowId);
   for (const r of watcherRoots) {
-    if (!roots.includes(r)) roots.push(r);
+    const resolved = path.resolve(expandTilde(r));
+    if (!roots.includes(resolved)) roots.push(resolved);
   }
   return roots;
 }
@@ -1479,7 +1492,7 @@ const createChat = async (
     return;
   }
   windowMap.set(windowId, mainWindow);
-  windowWorkspaces.set(windowId, path.resolve(workingDir));
+  addWorkspaceRootForWindow(windowId, workingDir);
 
   // Handle window closure
   mainWindow.on('closed', () => {
@@ -2423,45 +2436,65 @@ ipcMain.handle('list-files', async (_event, dirPath, extension) => {
 });
 
 ipcMain.handle('workspace-read-directory', async (event, workspaceRoot, relativeDir, options) => {
-  const roots = getWorkspaceRootsForSender(event.sender.id);
-  const root = roots.includes(workspaceRoot) ? workspaceRoot : roots[0] || workspaceRoot;
-  return readWorkspaceDirectory(root, relativeDir, options);
+  const senderWindow = requireRegularRendererWindow(event);
+  const resolvedRoot = workspaceRoot ? path.resolve(expandTilde(workspaceRoot)) : '';
+  if (!resolvedRoot) {
+    const roots = getWorkspaceRootsForWindow(senderWindow.id);
+    if (roots.length === 0) return [];
+    return readWorkspaceDirectory(roots[0], relativeDir, options);
+  }
+  addWorkspaceRootForWindow(senderWindow.id, resolvedRoot);
+  return readWorkspaceDirectory(resolvedRoot, relativeDir, options);
 });
 
 ipcMain.handle('workspace-read-file', async (event, filePath) => {
+  const senderWindow = requireRegularRendererWindow(event);
   const isCodeWorkspace = typeof filePath === 'string' && filePath.endsWith('.code-workspace');
-  const roots = getWorkspaceRootsForSender(event.sender.id);
+  const roots = getWorkspaceRootsForWindow(senderWindow.id);
   return readWorkspaceFile(filePath, isCodeWorkspace ? undefined : roots);
 });
 
 ipcMain.handle('workspace-create-file', async (event, filePath, content, overwrite) => {
-  const roots = getWorkspaceRootsForSender(event.sender.id);
+  const senderWindow = requireRegularRendererWindow(event);
+  const roots = getWorkspaceRootsForWindow(senderWindow.id);
   return createWorkspaceFile(filePath, content, roots, overwrite);
 });
 
 ipcMain.handle('workspace-create-directory', async (event, dirPath) => {
-  const roots = getWorkspaceRootsForSender(event.sender.id);
+  const senderWindow = requireRegularRendererWindow(event);
+  const roots = getWorkspaceRootsForWindow(senderWindow.id);
   return createWorkspaceDirectory(dirPath, roots);
 });
 
 ipcMain.handle('workspace-rename-path', async (event, oldPath, newPath) => {
-  const roots = getWorkspaceRootsForSender(event.sender.id);
+  const senderWindow = requireRegularRendererWindow(event);
+  const roots = getWorkspaceRootsForWindow(senderWindow.id);
   return renameWorkspacePath(oldPath, newPath, roots);
 });
 
 ipcMain.handle('workspace-delete-path', async (event, targetPath) => {
-  const roots = getWorkspaceRootsForSender(event.sender.id);
+  const senderWindow = requireRegularRendererWindow(event);
+  const roots = getWorkspaceRootsForWindow(senderWindow.id);
   return deleteWorkspacePath(targetPath, roots);
 });
 
 ipcMain.handle('workspace-get-git-statuses', async (event, workspacePath) => {
-  const roots = getWorkspaceRootsForSender(event.sender.id);
-  const root = roots.includes(workspacePath) ? workspacePath : roots[0] || workspacePath;
-  return getWorkspaceGitStatuses(root);
+  const senderWindow = requireRegularRendererWindow(event);
+  const resolved = path.resolve(expandTilde(workspacePath));
+  addWorkspaceRootForWindow(senderWindow.id, resolved);
+  return getWorkspaceGitStatuses(resolved);
 });
 
 ipcMain.handle('workspace-start-watching', async (event, workspacePath) => {
-  workspaceWatcherManager.startWatching(event.sender.id, workspacePath, (changedRoot) => {
+  const senderWindow = requireRegularRendererWindow(event);
+  const windowId = senderWindow.id;
+  const rawList = Array.isArray(workspacePath) ? workspacePath : [workspacePath];
+  for (const p of rawList) {
+    if (typeof p === 'string' && p.trim()) {
+      addWorkspaceRootForWindow(windowId, p);
+    }
+  }
+  workspaceWatcherManager.startWatching(windowId, workspacePath, (changedRoot) => {
     if (!event.sender.isDestroyed()) {
       event.sender.send('workspace-files-changed', { rootPath: changedRoot });
     }
@@ -2470,7 +2503,8 @@ ipcMain.handle('workspace-start-watching', async (event, workspacePath) => {
 });
 
 ipcMain.handle('workspace-stop-watching', async (event) => {
-  workspaceWatcherManager.stopWatching(event.sender.id);
+  const senderWindow = requireRegularRendererWindow(event);
+  workspaceWatcherManager.stopWatching(senderWindow.id);
   return true;
 });
 

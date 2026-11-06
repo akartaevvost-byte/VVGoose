@@ -553,6 +553,10 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
 .bg-inline-code {
   border-radius: 4px;
   color: var(--color-inline-code);
