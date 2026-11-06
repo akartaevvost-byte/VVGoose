@@ -90,6 +90,8 @@ Object.defineProperty(window, 'electron', {
     broadcastModelAndProviderChange: vi.fn(),
     onModelAndProviderChange: vi.fn(() => () => {}),
     reloadApp: vi.fn(),
+    checkForOllama: vi.fn(() => Promise.resolve(true)),
+    isCommandAvailable: vi.fn((cmd: string) => Promise.resolve(cmd === 'ollama')),
     showMessageBox: vi.fn(() => Promise.resolve({ response: 0 })),
     getIsFullScreen: vi.fn(() => Promise.resolve(false)),
     logInfo: vi.fn(),

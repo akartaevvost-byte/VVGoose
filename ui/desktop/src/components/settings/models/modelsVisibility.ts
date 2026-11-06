@@ -273,3 +273,62 @@ export async function resetVisibleModelsForProvider(
   await saveVisibleModelsSetting(visible);
   return visible;
 }
+
+export const CLI_PROVIDER_BINARIES: Record<string, string> = {
+  'cursor-agent': 'cursor-agent',
+  'cursor_agent': 'cursor-agent',
+  'gemini-cli': 'gemini',
+  'claude-code': 'claude',
+  'codex': 'codex',
+  'claude-acp': 'claude-agent-acp',
+  'codex-acp': 'codex-acp',
+  'copilot-acp': 'copilot-acp',
+  'amp-acp': 'amp',
+  'pi-acp': 'pi-acp',
+  'ollama': 'ollama',
+};
+
+export function getCliBinaryForProvider(providerName: string): string | null {
+  const normalized = providerName.toLowerCase().trim();
+  return CLI_PROVIDER_BINARIES[normalized] || null;
+}
+
+export async function isProviderAccessible(
+  provider: { name: string; is_configured?: boolean; is_available?: boolean },
+  fetchResult?: { error?: string | null; models?: unknown[] | null }
+): Promise<boolean> {
+  if (!provider.is_configured) {
+    return false;
+  }
+
+  if (fetchResult && fetchResult.error && (!fetchResult.models || fetchResult.models.length === 0)) {
+    return false;
+  }
+
+  const cliBinary = getCliBinaryForProvider(provider.name);
+  if (cliBinary) {
+    if (cliBinary === 'ollama') {
+      try {
+        const hasCli = await window.electron?.isCommandAvailable?.('ollama');
+        if (hasCli) return true;
+        const isRunning = await window.electron?.checkForOllama?.();
+        if (isRunning) return true;
+      } catch {
+        // ignore error
+      }
+      return provider.is_available ?? false;
+    }
+
+    if (window.electron?.isCommandAvailable) {
+      try {
+        const available = await window.electron.isCommandAvailable(cliBinary);
+        return Boolean(available);
+      } catch {
+        return false;
+      }
+    }
+    return provider.is_available ?? false;
+  }
+
+  return true;
+}

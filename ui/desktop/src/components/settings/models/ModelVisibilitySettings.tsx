@@ -11,6 +11,7 @@ import {
   computeDefaultVisibleModels,
   formatContextWindow,
   getModelPricingTier,
+  isProviderAccessible,
   loadCustomModelsSetting,
   loadVisibleModelsSetting,
   modelSupportsReasoning,
@@ -30,7 +31,7 @@ const i18n = defineMessages({
   description: {
     id: 'modelVisibilitySettings.description',
     defaultMessage:
-      'Choose which models appear in the quick model selector in the chat toolbar. Pinned models can be switched in a single click without opening settings.',
+      'Choose which models appear in the quick model selector in the chat toolbar. Only checked models will appear in the dropdown list.',
   },
   resetAll: {
     id: 'modelVisibilitySettings.resetAll',
@@ -100,13 +101,22 @@ export default function ModelVisibilitySettings({ setView }: ModelVisibilitySett
         loadCustomModelsSetting(),
       ]);
 
-      const active = allProviders.filter((p) => p.is_configured);
+      const configured = allProviders.filter((p) => p.is_configured);
+      const modelsResults = await fetchModelsForProviders(configured).catch(() => []);
+
+      const accessibleChecks = await Promise.all(
+        configured.map(async (p) => {
+          const fetchRes = modelsResults.find((r) => r.provider.name === p.name);
+          const accessible = await isProviderAccessible(p, fetchRes);
+          return { provider: p, accessible };
+        })
+      );
+      const active = accessibleChecks.filter((item) => item.accessible).map((item) => item.provider);
+
       setProviders(active);
       setVisibleModels(savedVisible);
       setCustomModels(savedCustom);
 
-      // Fetch dynamic models for active providers
-      const modelsResults = await fetchModelsForProviders(active).catch(() => []);
       const newModelsMap: Record<string, ProviderModelItem[]> = {};
 
       active.forEach((p) => {

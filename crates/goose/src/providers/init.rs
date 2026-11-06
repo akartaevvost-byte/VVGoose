@@ -99,7 +99,7 @@ async fn init_registry() -> RwLock<ProviderRegistry> {
         registry.register::<CodexProvider>(true);
         registry.register_with_inventory::<CursorAgentProvider>(
             false,
-            Some(registrations::refresh_only()),
+            Some(registrations::cursor_agent_inventory()),
         );
         registry.register_with_inventory::<DatabricksProviderDef>(
             true,

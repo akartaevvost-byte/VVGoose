@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ModelVisibilitySettings from './ModelVisibilitySettings';
 import { IntlTestWrapper } from '../../../i18n/test-utils';
+import type { ProviderDetails } from '../../../types/providers';
 
 const mockActiveProviders = [
   {
@@ -129,6 +130,34 @@ describe('ModelVisibilitySettings', () => {
 
     await waitFor(() => {
       expect(window.electron.setSetting).toHaveBeenCalledWith('visibleModels', {});
+    });
+  });
+
+  it('filters out CLI tools not installed in the system', async () => {
+    const { acpListProviderDetails } = await import('../../../acp/providers');
+    vi.mocked(acpListProviderDetails).mockResolvedValueOnce([
+      ...mockActiveProviders,
+      {
+        name: 'cursor-agent',
+        is_configured: true,
+        is_available: false,
+        metadata: {
+          display_name: 'Cursor Agent',
+          default_model: 'auto',
+          known_models: [{ name: 'auto' }],
+        },
+      } as unknown as ProviderDetails,
+    ]);
+
+    render(
+      <IntlTestWrapper>
+        <ModelVisibilitySettings />
+      </IntlTestWrapper>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('OpenAI')).toBeInTheDocument();
+      expect(screen.queryByText('Cursor Agent')).not.toBeInTheDocument();
     });
   });
 });

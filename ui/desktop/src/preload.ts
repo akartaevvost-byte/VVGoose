@@ -123,6 +123,7 @@ type ElectronAPI = {
   showSaveDialog: (options: SaveDialogOptions) => Promise<SaveDialogResponse>;
   reloadApp: () => void;
   checkForOllama: () => Promise<boolean>;
+  isCommandAvailable: (command: string) => Promise<boolean>;
   selectFileOrDirectory: (
     defaultPath?: string,
     options?: SelectFileOrDirectoryOptions
@@ -248,6 +249,7 @@ const electronAPI: ElectronAPI = {
   showSaveDialog: (options: SaveDialogOptions) => ipcRenderer.invoke('show-save-dialog', options),
   reloadApp: () => ipcRenderer.send('reload-app'),
   checkForOllama: () => ipcRenderer.invoke('check-ollama'),
+  isCommandAvailable: (command: string) => ipcRenderer.invoke('is-command-available', command),
 
   selectFileOrDirectory: (defaultPath?: string, options?: SelectFileOrDirectoryOptions) =>
     ipcRenderer.invoke('select-file-or-directory', defaultPath, options),

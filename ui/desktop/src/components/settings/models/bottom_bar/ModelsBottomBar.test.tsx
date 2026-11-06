@@ -168,7 +168,7 @@ describe('ModelsBottomBar', () => {
     expect(screen.queryByTestId('model-loading-state')).not.toBeInTheDocument();
   });
 
-  it('opens quick model picker and renders pinned models', async () => {
+  it('opens quick model picker and renders visible models', async () => {
     renderWithIntl(
       <ModelsBottomBar
         sessionId="session-123"
@@ -186,7 +186,7 @@ describe('ModelsBottomBar', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('quick-model-picker-content')).toBeInTheDocument();
-      expect(screen.getByTestId('pinned-models-section')).toBeInTheDocument();
+      expect(screen.getByTestId('visible-models-section')).toBeInTheDocument();
       expect(screen.getByTestId('model-item-config-model')).toBeInTheDocument();
     });
   });

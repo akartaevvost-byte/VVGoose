@@ -11,6 +11,8 @@ import {
   resetVisibleModelsForProvider,
   loadVisibleModelsSetting,
   loadCustomModelsSetting,
+  getCliBinaryForProvider,
+  isProviderAccessible,
 } from './modelsVisibility';
 
 describe('modelsVisibility utility', () => {
@@ -132,6 +134,38 @@ describe('modelsVisibility utility', () => {
       await resetVisibleModelsForProvider();
       visible = await loadVisibleModelsSetting();
       expect(Object.keys(visible).length).toBe(0);
+    });
+  });
+
+  describe('getCliBinaryForProvider and isProviderAccessible', () => {
+    it('maps known CLI provider names to binaries', () => {
+      expect(getCliBinaryForProvider('cursor-agent')).toBe('cursor-agent');
+      expect(getCliBinaryForProvider('gemini-cli')).toBe('gemini');
+      expect(getCliBinaryForProvider('ollama')).toBe('ollama');
+      expect(getCliBinaryForProvider('openai')).toBeNull();
+      expect(getCliBinaryForProvider('anthropic')).toBeNull();
+    });
+
+    it('determines provider accessibility accurately', async () => {
+      // Unconfigured provider is never accessible
+      expect(await isProviderAccessible({ name: 'openai', is_configured: false })).toBe(false);
+
+      // Configured API provider with working access is accessible
+      expect(await isProviderAccessible({ name: 'openai', is_configured: true })).toBe(true);
+
+      // Configured API provider with fetch error and no models is inaccessible
+      expect(
+        await isProviderAccessible(
+          { name: 'openai', is_configured: true },
+          { error: 'Invalid API key', models: [] }
+        )
+      ).toBe(false);
+
+      // CLI provider installed in system (ollama mock is true) is accessible
+      expect(await isProviderAccessible({ name: 'ollama', is_configured: true })).toBe(true);
+
+      // CLI provider not installed (cursor-agent returns false) is inaccessible
+      expect(await isProviderAccessible({ name: 'cursor-agent', is_configured: true })).toBe(false);
     });
   });
 });

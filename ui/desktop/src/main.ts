@@ -2399,6 +2399,21 @@ ipcMain.handle('check-ollama', async () => {
   }
 });
 
+ipcMain.handle('is-command-available', async (_event, commandName: string) => {
+  if (!commandName || typeof commandName !== 'string') return false;
+  const trimmed = commandName.trim();
+  if (!trimmed) return false;
+  try {
+    const loginShellPath = await getLoginShellPath(log);
+    const env = { ...process.env, PATH: loginShellPath || process.env.PATH };
+    const checker = process.platform === 'win32' ? 'where' : 'which';
+    execFileSync(checker, [trimmed], { env, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 ipcMain.handle('write-file', async (_event, filePath, content) => {
   try {
     // Expand tilde to home directory

@@ -7,9 +7,6 @@ import {
   Check,
   Brain,
   Eye,
-  Pin,
-  ChevronDown,
-  ChevronRight,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -31,6 +28,7 @@ import {
   computeDefaultVisibleModels,
   formatContextWindow,
   getModelPricingTier,
+  isProviderAccessible,
   loadCustomModelsSetting,
   loadVisibleModelsSetting,
   modelSupportsReasoning,
@@ -64,9 +62,9 @@ const i18n = defineMessages({
     id: 'modelsBottomBar.searchPlaceholder',
     defaultMessage: 'Search models...',
   },
-  pinnedModels: {
-    id: 'modelsBottomBar.pinnedModels',
-    defaultMessage: 'Pinned Models',
+  noVisibleModels: {
+    id: 'modelsBottomBar.noVisibleModels',
+    defaultMessage: 'No models selected. Configure visible models in Settings.',
   },
   allModels: {
     id: 'modelsBottomBar.allModels',
@@ -151,7 +149,6 @@ export default function ModelsBottomBar({
   const [providerModelsMap, setProviderModelsMap] = useState<Record<string, Model[]>>({});
   const [visibleModelsMap, setVisibleModelsMap] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
 
   const loadRecentModels = useCallback(async () => {
     const stored = (await window.electron.getSetting('recentModels')) ?? [];
@@ -166,7 +163,14 @@ export default function ModelsBottomBar({
         loadCustomModelsSetting(),
       ]);
 
-      const active = allProviders.filter((p) => p.is_configured);
+      const configured = allProviders.filter((p) => p.is_configured);
+      const accessibleChecks = await Promise.all(
+        configured.map(async (p) => {
+          const accessible = await isProviderAccessible(p);
+          return { provider: p, accessible };
+        })
+      );
+      const active = accessibleChecks.filter((item) => item.accessible).map((item) => item.provider);
       setProviders(active);
       setVisibleModelsMap(savedVisible);
 
@@ -334,8 +338,8 @@ export default function ModelsBottomBar({
     }
   };
 
-  // Compute pinned models across all active providers
-  const pinnedModelsList = useMemo(() => {
+  // Compute visible models across all active providers (only those checked by user)
+  const visibleModelsList = useMemo(() => {
     if (shouldShowPredefinedModels()) {
       return getPredefinedModelsFromEnv();
     }
@@ -361,40 +365,17 @@ export default function ModelsBottomBar({
     return list;
   }, [providers, providerModelsMap, visibleModelsMap]);
 
-  // All available models flattened
-  const allAvailableModels = useMemo(() => {
-    const list: Model[] = [];
-    providers.forEach((p) => {
-      const models = providerModelsMap[p.name] || [];
-      models.forEach((m) => {
-        if (
-          !list.some((existing) => existing.name === m.name && existing.provider === m.provider)
-        ) {
-          list.push(m);
-        }
-      });
-    });
-    return list;
-  }, [providers, providerModelsMap]);
-
-  // Filtered models for search query
+  // Filtered models for search query within visible models
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    return allAvailableModels.filter((m) => {
+    return visibleModelsList.filter((m) => {
       const nameMatch = m.name.toLowerCase().includes(q);
       const aliasMatch = m.alias ? m.alias.toLowerCase().includes(q) : false;
       const providerMatch = m.provider.toLowerCase().includes(q);
       return nameMatch || aliasMatch || providerMatch;
     });
-  }, [searchQuery, allAvailableModels]);
-
-  const toggleProviderExpand = (providerName: string) => {
-    setExpandedProviders((prev) => ({
-      ...prev,
-      [providerName]: !prev[providerName],
-    }));
-  };
+  }, [searchQuery, visibleModelsList]);
 
   const renderModelRow = (m: Model, showProviderTag = true) => {
     const isSelected = m.name === currentModel && m.provider === currentProvider;
@@ -537,11 +518,11 @@ export default function ModelsBottomBar({
             {searchQuery.trim() ? (
               // Search results mode
               searchResults.length > 0 ? (
-                <div className="space-y-0.5">
+                <div className="space-y-0.5" data-testid="visible-models-section">
                   <div className="px-2 py-1 text-[11px] font-medium text-text-muted uppercase tracking-wider">
                     Matches ({searchResults.length})
                   </div>
-                  {searchResults.map((m) => renderModelRow(m, true))}
+                  {searchResults.map((m) => renderModelRow(m, providers.length > 1))}
                 </div>
               ) : (
                 <div className="p-6 text-center text-xs text-text-muted">
@@ -549,64 +530,26 @@ export default function ModelsBottomBar({
                 </div>
               )
             ) : (
-              // Normal categorized mode
-              <div className="space-y-2">
-                {/* Pinned Models Section */}
-                {pinnedModelsList.length > 0 && (
-                  <div className="space-y-0.5" data-testid="pinned-models-section">
-                    <div className="px-2 py-1 text-[11px] font-semibold text-text-secondary flex items-center gap-1.5 uppercase tracking-wider">
-                      <Pin className="w-3 h-3 text-primary" />
-                      {intl.formatMessage(i18n.pinnedModels)}
-                    </div>
-                    {pinnedModelsList.map((m) => renderModelRow(m, true))}
-                  </div>
-                )}
-
-                {/* Grouped by Provider Sections */}
-                {providers.map((p) => {
-                  const allForProvider = providerModelsMap[p.name] || [];
-                  // Models not in pinned list
-                  const unpinned = allForProvider.filter(
-                    (m) =>
-                      !pinnedModelsList.some(
-                        (pinned) => pinned.name === m.name && pinned.provider === p.name
-                      )
-                  );
-
-                  if (unpinned.length === 0) return null;
-
-                  const isExpanded = Boolean(expandedProviders[p.name]);
-
-                  return (
-                    <div key={p.name} className="space-y-0.5 pt-1 border-t border-border-subtle/50">
-                      <button
-                        type="button"
-                        onClick={() => toggleProviderExpand(p.name)}
-                        className="w-full flex items-center justify-between px-2 py-1 text-[11px] font-medium text-text-muted hover:text-text-primary rounded-md transition-colors cursor-pointer"
-                        data-testid={`toggle-provider-${p.name}`}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          {isExpanded ? (
-                            <ChevronDown className="w-3 h-3" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3" />
-                          )}
-                          {p.metadata.display_name || p.name}
-                        </span>
-                        <span className="text-[10px] text-text-muted">
-                          {isExpanded ? 'Hide' : `+${unpinned.length} more`}
-                        </span>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="pl-1 space-y-0.5 animate-in fade-in duration-100">
-                          {unpinned.map((m) => renderModelRow(m, false))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              // Visible/checked models list only
+              visibleModelsList.length > 0 ? (
+                <div className="space-y-0.5" data-testid="visible-models-section">
+                  {visibleModelsList.map((m) => renderModelRow(m, providers.length > 1))}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-xs text-text-muted space-y-2">
+                  <p>{intl.formatMessage(i18n.noVisibleModels)}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPickerOpen(false);
+                      setView('settings', { section: 'models' });
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    {intl.formatMessage(i18n.configureVisibleModels)}
+                  </button>
+                </div>
+              )
             )}
           </ScrollArea>
 

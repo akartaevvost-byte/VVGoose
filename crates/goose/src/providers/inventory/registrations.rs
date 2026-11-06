@@ -264,6 +264,10 @@ pub fn pi_acp_inventory() -> InventoryRegistration {
     acp_inventory(PI_ACP_PROVIDER_NAME, PI_ACP_BINARY, true)
 }
 
+pub fn cursor_agent_inventory() -> InventoryRegistration {
+    refresh_only().with_configured(|| acp_adapter_installed("cursor-agent"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
