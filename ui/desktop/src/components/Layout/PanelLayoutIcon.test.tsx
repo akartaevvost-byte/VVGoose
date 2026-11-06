@@ -10,10 +10,10 @@ describe('PanelLayoutIcon', () => {
     const { container: closedContainer } = render(
       <PanelLayoutIcon position="left" isOpen={false} />
     );
-    // Closed state: left region path has subtle tint (fill-opacity 0.28)
+    // Closed state: left region path has subtle tint (fill-opacity 0.3)
     const closedPath = closedContainer.querySelector('path');
     expect(closedPath).toBeDefined();
-    expect(closedPath?.getAttribute('fill-opacity')).toBe('0.28');
+    expect(closedPath?.getAttribute('fill-opacity')).toBe('0.3');
     expect(closedContainer.querySelectorAll('rect').length).toBe(1);
     expect(closedContainer.querySelectorAll('line').length).toBe(2);
 
@@ -30,10 +30,10 @@ describe('PanelLayoutIcon', () => {
     const { container: closedContainer } = render(
       <PanelLayoutIcon position="center" isOpen={false} />
     );
-    // Closed state: center rect has subtle tint (fill-opacity 0.28)
+    // Closed state: center rect has subtle tint (fill-opacity 0.3)
     const closedRects = closedContainer.querySelectorAll('rect');
     expect(closedRects.length).toBe(2);
-    expect(closedRects[1]?.getAttribute('fill-opacity')).toBe('0.28');
+    expect(closedRects[1]?.getAttribute('fill-opacity')).toBe('0.3');
 
     const { container: openContainer } = render(
       <PanelLayoutIcon position="center" isOpen={true} />
@@ -48,10 +48,10 @@ describe('PanelLayoutIcon', () => {
     const { container: closedContainer } = render(
       <PanelLayoutIcon position="right" isOpen={false} />
     );
-    // Closed state: right region path has subtle tint (fill-opacity 0.28)
+    // Closed state: right region path has subtle tint (fill-opacity 0.3)
     const closedPath = closedContainer.querySelector('path');
     expect(closedPath).toBeDefined();
-    expect(closedPath?.getAttribute('fill-opacity')).toBe('0.28');
+    expect(closedPath?.getAttribute('fill-opacity')).toBe('0.3');
 
     const { container: openContainer } = render(
       <PanelLayoutIcon position="right" isOpen={true} />

@@ -41,7 +41,7 @@ export const PanelLayoutIcon: React.FC<PanelLayoutIconProps> = ({
         <path
           d="M 3.5 2.5 L 5.8 2.5 L 5.8 13.5 L 3.5 13.5 A 2 2 0 0 1 1.5 11.5 L 1.5 4.5 A 2 2 0 0 1 3.5 2.5 Z"
           fill="currentColor"
-          fillOpacity={isOpen ? 1 : 0.28}
+          fillOpacity={isOpen ? 1 : 0.3}
         />
       )}
 
@@ -52,7 +52,7 @@ export const PanelLayoutIcon: React.FC<PanelLayoutIconProps> = ({
           width="4.4"
           height="11"
           fill="currentColor"
-          fillOpacity={isOpen ? 1 : 0.28}
+          fillOpacity={isOpen ? 1 : 0.3}
         />
       )}
 
@@ -60,7 +60,7 @@ export const PanelLayoutIcon: React.FC<PanelLayoutIconProps> = ({
         <path
           d="M 10.2 2.5 L 12.5 2.5 A 2 2 0 0 1 14.5 4.5 L 14.5 11.5 A 2 2 0 0 1 12.5 13.5 L 10.2 13.5 Z"
           fill="currentColor"
-          fillOpacity={isOpen ? 1 : 0.28}
+          fillOpacity={isOpen ? 1 : 0.3}
         />
       )}
     </svg>
