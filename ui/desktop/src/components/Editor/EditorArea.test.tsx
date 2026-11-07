@@ -225,6 +225,13 @@ describe('EditorArea', () => {
   });
 
   it('renders EmptyEditorView when no files are open', () => {
+    localStorage.setItem(
+      'goose_recent_workspaces',
+      JSON.stringify([
+        { path: '/projects/alpha', name: 'alpha', isWorkspaceFile: false },
+        { path: '/projects/beta.code-workspace', name: 'beta', isWorkspaceFile: true },
+      ])
+    );
     render(
       <WorkspaceProvider>
         <EditorArea />
@@ -233,9 +240,15 @@ describe('EditorArea', () => {
 
     expect(screen.getByText('Рабочее пространство Goose')).toBeDefined();
     expect(screen.getByText('Открыть папку проекта...')).toBeDefined();
+    expect(screen.getByText('Недавние проекты')).toBeDefined();
+    expect(screen.getByText('alpha')).toBeDefined();
   });
 
   it('hides workspace open buttons in EmptyEditorView when a workspace is already open', async () => {
+    localStorage.setItem(
+      'goose_recent_workspaces',
+      JSON.stringify([{ path: '/projects/alpha', name: 'alpha', isWorkspaceFile: false }])
+    );
     render(
       <WorkspaceProvider>
         <TestWorkspaceSetup root="/mock/workspace" />
@@ -247,6 +260,7 @@ describe('EditorArea', () => {
       expect(screen.queryByText('Открыть папку проекта...')).toBeNull();
     });
     expect(screen.queryByText('Открыть файл .code-workspace...')).toBeNull();
+    expect(screen.queryByText('Недавние проекты')).toBeNull();
     expect(screen.getByText('Рабочее пространство Goose')).toBeDefined();
   });
 

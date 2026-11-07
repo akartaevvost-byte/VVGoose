@@ -56,8 +56,9 @@ export const EmptyEditorView: React.FC = () => {
         </div>
       )}
 
-      {/* Recent Workspaces List */}
-      {recentWorkspaces.length > 0 && (
+      {/* Recent Workspaces List - startup proposal only; hidden once a
+          workspace is open (switching projects then happens from the Hub) */}
+      {!workspacePath && recentWorkspaces.length > 0 && (
         <div className="w-72 text-left mb-6">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2">
             <Clock className="w-3 h-3" />
