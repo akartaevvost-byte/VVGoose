@@ -8,7 +8,6 @@ import type {
   GitFileStatus,
   WorkspaceFileContentResult,
   WorkspaceFileNode,
-  WorkspaceFileTreeOptions,
   WorkspaceOperationResult,
 } from './types/fileSystem';
 
@@ -142,8 +141,7 @@ type ElectronAPI = {
   listFiles: (dirPath: string, extension?: string) => Promise<string[]>;
   workspaceReadDirectory: (
     workspaceRoot: string,
-    relativeDir?: string,
-    options?: WorkspaceFileTreeOptions
+    relativeDir?: string
   ) => Promise<WorkspaceFileNode[]>;
   workspaceReadFile: (filePath: string) => Promise<WorkspaceFileContentResult>;
   workspaceCreateFile: (
@@ -271,11 +269,8 @@ const electronAPI: ElectronAPI = {
   ensureDirectory: (dirPath: string) => ipcRenderer.invoke('ensure-directory', dirPath),
   listFiles: (dirPath: string, extension?: string) =>
     ipcRenderer.invoke('list-files', dirPath, extension),
-  workspaceReadDirectory: (
-    workspaceRoot: string,
-    relativeDir?: string,
-    options?: WorkspaceFileTreeOptions
-  ) => ipcRenderer.invoke('workspace-read-directory', workspaceRoot, relativeDir, options),
+  workspaceReadDirectory: (workspaceRoot: string, relativeDir?: string) =>
+    ipcRenderer.invoke('workspace-read-directory', workspaceRoot, relativeDir),
   workspaceReadFile: (filePath: string) => ipcRenderer.invoke('workspace-read-file', filePath),
   workspaceCreateFile: (filePath: string, content: string, overwrite: boolean) =>
     ipcRenderer.invoke('workspace-create-file', filePath, content, overwrite),

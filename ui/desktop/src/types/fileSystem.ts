@@ -12,10 +12,6 @@ export interface WorkspaceFileNode {
   children?: WorkspaceFileNode[];
 }
 
-export interface WorkspaceFileTreeOptions {
-  includeIgnored: boolean;
-}
-
 export interface WorkspaceOperationResult<T = void> {
   success: boolean;
   error?: string;

@@ -8,7 +8,6 @@ import type {
   GitFileStatus,
   WorkspaceFileContentResult,
   WorkspaceFileNode,
-  WorkspaceFileTreeOptions,
   WorkspaceOperationResult,
 } from './types/fileSystem';
 
@@ -150,8 +149,7 @@ export async function getWorkspaceGitStatuses(
  */
 export async function readWorkspaceDirectory(
   workspaceRoot: string,
-  relativeDir = '',
-  options?: WorkspaceFileTreeOptions
+  relativeDir = ''
 ): Promise<WorkspaceFileNode[]> {
   const expandedRoot = path.resolve(expandTilde(workspaceRoot));
   const targetDir = path.resolve(expandedRoot, relativeDir);
@@ -202,11 +200,6 @@ export async function readWorkspaceDirectory(
       }
 
       const isIgnored = gitStatus === 'ignored';
-
-      // Skip ignored files if option is not set
-      if (isIgnored && !options?.includeIgnored) {
-        continue;
-      }
 
       let size: number | undefined;
       let modifiedTime: number | undefined;

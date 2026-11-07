@@ -2566,16 +2566,16 @@ ipcMain.handle('list-files', async (_event, dirPath, extension) => {
   }
 });
 
-ipcMain.handle('workspace-read-directory', async (event, workspaceRoot, relativeDir, options) => {
+ipcMain.handle('workspace-read-directory', async (event, workspaceRoot, relativeDir) => {
   const senderWindow = requireRegularRendererWindow(event);
   const resolvedRoot = workspaceRoot ? path.resolve(expandTilde(workspaceRoot)) : '';
   if (!resolvedRoot) {
     const roots = getWorkspaceRootsForWindow(senderWindow.id);
     if (roots.length === 0) return [];
-    return readWorkspaceDirectory(roots[0], relativeDir, options);
+    return readWorkspaceDirectory(roots[0], relativeDir);
   }
   addWorkspaceRootForWindow(senderWindow.id, resolvedRoot);
-  return readWorkspaceDirectory(resolvedRoot, relativeDir, options);
+  return readWorkspaceDirectory(resolvedRoot, relativeDir);
 });
 
 ipcMain.handle('workspace-read-file', async (event, filePath) => {

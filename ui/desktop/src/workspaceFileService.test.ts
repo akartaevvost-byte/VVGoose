@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import {
   readWorkspaceDirectory,
   readWorkspaceFile,
@@ -13,7 +17,6 @@ import {
   assertWithinWorkspace,
   getWorkspaceGitStatuses,
 } from './workspaceFileService';
-
 describe('workspaceFileService', () => {
   let tempDir: string;
 
@@ -68,6 +71,25 @@ describe('workspaceFileService', () => {
       expect(nodes[0].name).toBe('child.rs');
       expect(nodes[0].relativePath).toBe('nested/child.rs');
       expect(nodes[0].isDirectory).toBe(false);
+    });
+  });
+
+  describe('gitignore handling', () => {
+    it('includes gitignored directories and files with the isIgnored flag', async () => {
+      await execFileAsync('git', ['init'], { cwd: tempDir });
+      await createWorkspaceFile(path.join(tempDir, '.gitignore'), '/docs/reviews/\n');
+      await createWorkspaceFile(path.join(tempDir, 'docs', 'reviews', 'note.md'), 'review notes');
+
+      const docsNodes = await readWorkspaceDirectory(tempDir, 'docs');
+      const reviews = docsNodes.find((n) => n.name === 'reviews');
+      expect(reviews).toBeDefined();
+      expect(reviews?.isIgnored).toBe(true);
+      expect(reviews?.gitStatus).toBe('ignored');
+
+      const reviewsNodes = await readWorkspaceDirectory(tempDir, 'docs/reviews');
+      expect(reviewsNodes.length).toBe(1);
+      expect(reviewsNodes[0].name).toBe('note.md');
+      expect(reviewsNodes[0].isIgnored).toBe(true);
     });
   });
 
