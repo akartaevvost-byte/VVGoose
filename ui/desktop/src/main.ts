@@ -1723,8 +1723,7 @@ const showWindow = async () => {
 
   if (windows.length === 0) {
     log.info('No windows are open, creating a new one...');
-    const openDir = resolveInitialDir();
-    await createChat(app, { dir: openDir });
+    await createChat(app);
     return;
   }
 
@@ -2674,8 +2673,11 @@ ipcMain.handle('get-allowed-extensions', async () => {
 });
 
 const createNewWindow = async (app: App, dir?: string | null) => {
-  const openDir = resolveInitialDir(dir);
-  return await createChat(app, { dir: openDir });
+  // Only an explicitly requested directory (--dir CLI arg) opens a project in
+  // the new window. resolveInitialDir fallbacks (last opened workspace, recent
+  // dirs) stay available for the agent working dir inside createChat, but must
+  // not auto-open the workspace UI.
+  return await createChat(app, { dir: dir?.trim() || undefined });
 };
 
 const focusWindow = () => {
