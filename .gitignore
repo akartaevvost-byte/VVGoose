@@ -103,3 +103,6 @@ live-in-desktop-design
 
 # Review notes
 /docs/reviews/
+
+# Local agent completion marker. Kept out of git so each checkout can use its own.
+.cursor/rules/completion-status.mdc
