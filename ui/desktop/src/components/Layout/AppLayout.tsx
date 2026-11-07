@@ -457,12 +457,13 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
               />
             )}
 
-            {/* Right Panel: File Explorer */}
+            {/* Right Panel: File Explorer - pinned to the right window edge via
+                ml-auto so it never slides left when the center panel is hidden */}
             {isExplorerVisible && (
               <div
                 style={{ width: isEditorVisible || isChatVisible ? explorerWidth : '100%' }}
                 className={cn(
-                  'h-full p-2 pl-0 flex flex-col min-w-[200px]',
+                  'ml-auto h-full p-2 pl-0 flex flex-col min-w-[200px]',
                   isEditorVisible || isChatVisible ? 'flex-shrink-0' : 'flex-1'
                 )}
               >

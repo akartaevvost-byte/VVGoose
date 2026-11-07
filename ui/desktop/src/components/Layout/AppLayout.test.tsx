@@ -112,6 +112,23 @@ describe('AppLayout 3-panel layout', () => {
     expect(screen.getByTestId('editor-area')).toBeDefined();
   });
 
+  it('keeps the file explorer pinned to the right edge when the editor is hidden', () => {
+    renderWithProviders('/pair');
+
+    const explorerWrapper = () =>
+      screen.getByTestId('file-explorer').parentElement?.parentElement as HTMLElement;
+    expect(explorerWrapper()?.className).toContain('ml-auto');
+
+    fireEvent.click(screen.getByTitle('Toggle editor'));
+
+    expect(screen.queryByTestId('editor-area')).toBeNull();
+    // The explorer must stay anchored to the right window edge: it keeps its
+    // fixed width instead of stretching towards the chat panel.
+    const wrapper = explorerWrapper();
+    expect(wrapper.className).toContain('ml-auto');
+    expect(wrapper.style.width).not.toBe('100%');
+  });
+
   it('toggles file explorer visibility using Cmd+Shift+E / Ctrl+Shift+E shortcut', () => {
     renderWithProviders('/pair');
 
