@@ -24,7 +24,6 @@ import { syncActiveSessionWorkingDir } from '../utils/workspaceSessionSync';
 import {
   emptyWorkspace,
   isPathInside,
-  readCachedWorkspace,
   resolveInitialWorkspace,
   sameWorkspace,
   toLastOpened,
@@ -32,7 +31,6 @@ import {
   withRemovedFolder,
   workspaceFromCodeWorkspace,
   workspaceFromFolder,
-  workspaceFromSaved,
   WORKSPACE_STATE_KEY,
   type WindowWorkspace,
   type WorkspaceKind,
@@ -104,12 +102,11 @@ function readConfigString(key: string): string {
 }
 
 function readInitialWindowWorkspace(): WindowWorkspace {
+  // Startup opens without a project: the user picks one from the recent list or
+  // dialogs in the empty editor view. Only an explicit launch request
+  // (REQUEST_DIR / REQUEST_WORKSPACE_FILE) opens a folder right away.
   if (readConfigString('REQUEST_WORKSPACE_FILE')) return emptyWorkspace();
-  return resolveInitialWorkspace({
-    requestDir: readConfigString('REQUEST_DIR'),
-    cached: readCachedWorkspace(),
-    workingDir: readConfigString('GOOSE_WORKING_DIR'),
-  });
+  return resolveInitialWorkspace({ requestDir: readConfigString('REQUEST_DIR') });
 }
 const CHAT_WIDTH_KEY = 'goose_chat_width';
 const CHAT_VISIBLE_KEY = 'goose_chat_visible';
@@ -430,28 +427,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const applyWindowWorkspaceRef = useRef(applyWindowWorkspace);
   applyWindowWorkspaceRef.current = applyWindowWorkspace;
   const openCodeWorkspaceRef = useRef<(filePath: string) => Promise<boolean>>(async () => false);
-
-  useEffect(() => {
-    if (userChoseWorkspaceRef.current || !window.electron?.getSetting) return;
-    let cancelled = false;
-    window.electron
-      .getSetting('lastOpenedWorkspace')
-      .then((saved) => {
-        if (cancelled || userChoseWorkspaceRef.current) return;
-        const restored = workspaceFromSaved(saved);
-        if (!restored) return;
-        void applyWindowWorkspaceRef.current(restored, {
-          syncActiveSession: true,
-          recordRecent: false,
-          closeEditors: false,
-          markUserChoice: false,
-        });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const current = workspaceRef.current;

@@ -33,24 +33,28 @@ export const EmptyEditorView: React.FC = () => {
           : 'Откройте локальный каталог с исходным кодом проекта или файл рабочего пространства, совместимый с Cursor и VS Code.'}
       </p>
 
-      {/* Workspace Action Buttons */}
-      <div className="flex flex-col gap-2 mb-6 w-72">
-        <Button
-          onClick={() => void openFolderDialog()}
-          className="flex items-center justify-center gap-2 bg-goose-teal hover:bg-goose-teal/90 text-white font-medium text-xs py-2 rounded-lg cursor-pointer shadow-sm"
-        >
-          <FolderOpen className="w-4 h-4" />
-          <span>Открыть папку проекта...</span>
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => void openWorkspaceFileDialog()}
-          className="flex items-center justify-center gap-2 bg-background-tertiary hover:bg-background-tertiary/80 text-text-primary border-border-primary text-xs py-2 rounded-lg cursor-pointer"
-        >
-          <FileText className="w-4 h-4 text-text-secondary" />
-          <span>Открыть файл .code-workspace...</span>
-        </Button>
-      </div>
+      {/* Workspace Action Buttons - only when no workspace is open yet.
+          Once a folder/workspace is open, new files are opened from the
+          file explorer instead of these dialogs. */}
+      {!workspacePath && (
+        <div className="flex flex-col gap-2 mb-6 w-72">
+          <Button
+            onClick={() => void openFolderDialog()}
+            className="flex items-center justify-center gap-2 bg-goose-teal hover:bg-goose-teal/90 text-white font-medium text-xs py-2 rounded-lg cursor-pointer shadow-sm"
+          >
+            <FolderOpen className="w-4 h-4" />
+            <span>Открыть папку проекта...</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void openWorkspaceFileDialog()}
+            className="flex items-center justify-center gap-2 bg-background-tertiary hover:bg-background-tertiary/80 text-text-primary border-border-primary text-xs py-2 rounded-lg cursor-pointer"
+          >
+            <FileText className="w-4 h-4 text-text-secondary" />
+            <span>Открыть файл .code-workspace...</span>
+          </Button>
+        </div>
+      )}
 
       {/* Recent Workspaces List */}
       {recentWorkspaces.length > 0 && (

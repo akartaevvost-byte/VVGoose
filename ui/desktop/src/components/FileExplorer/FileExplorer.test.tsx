@@ -1,10 +1,39 @@
 /**
  * @vitest-environment jsdom
  */
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileExplorer } from './FileExplorer';
-import { WorkspaceProvider } from '../../contexts/WorkspaceContext';
+import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
+const TestWorkspaceSetup: React.FC<{
+  root?: string;
+  extraFolders?: string[];
+  codeWorkspace?: string;
+}> = ({ root, extraFolders = [], codeWorkspace }) => {
+  const { workspacePath, workspaceFolders, setWorkspacePath, addWorkspaceFolder, openCodeWorkspace } =
+    useWorkspace();
+  const queueRef = React.useRef<string[]>(extraFolders.slice());
+
+  React.useEffect(() => {
+    if (codeWorkspace) {
+      if (!workspacePath) void openCodeWorkspace(codeWorkspace);
+      return;
+    }
+    if (!workspacePath) {
+      setWorkspacePath(root!);
+      return;
+    }
+    const next = queueRef.current[0];
+    if (next && !workspaceFolders.some((f) => f.path === next)) {
+      queueRef.current.shift();
+      addWorkspaceFolder(next);
+    }
+  }, [workspacePath, workspaceFolders, setWorkspacePath, addWorkspaceFolder, root, codeWorkspace, openCodeWorkspace]);
+
+  return null;
+};
+
 import type { WorkspaceFileNode } from '../../types/fileSystem';
 
 describe('FileExplorer', () => {
@@ -25,7 +54,6 @@ describe('FileExplorer', () => {
   });
 
   it('renders files and folders when workspace directory is selected', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/workspace');
 
     const mockRootNodes: WorkspaceFileNode[] = [
       {
@@ -78,6 +106,7 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/workspace" />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -106,22 +135,17 @@ describe('FileExplorer', () => {
   });
 
   it('shows the code-workspace name instead of a folder count', async () => {
-    localStorage.setItem(
-      'goose_workspace_state',
-      JSON.stringify({
-        kind: 'code-workspace',
-        path: '/mock/app',
-        name: 'качество',
-        workspaceFilePath: '/mock/качество.code-workspace',
-        folders: [
-          { path: '/mock/app', name: 'app' },
-          { path: '/mock/core', name: 'core' },
-        ],
-      })
-    );
-
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       workspaceReadDirectory: vi.fn().mockResolvedValue([]),
+      workspaceReadFile: vi.fn().mockResolvedValue({
+        found: true,
+        content: JSON.stringify({
+          folders: [{ path: '/mock/app' }, { path: '/mock/core' }],
+        }),
+        error: null,
+        isBinary: false,
+        filePath: '/mock/качество.code-workspace',
+      }),
       workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
       workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
@@ -130,6 +154,7 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup codeWorkspace="/mock/качество.code-workspace" />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -143,7 +168,6 @@ describe('FileExplorer', () => {
   });
 
   it('opens create-file action modal when clicking create file button in header', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/workspace');
 
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       workspaceReadDirectory: vi.fn().mockResolvedValue([]),
@@ -159,6 +183,7 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/workspace" />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -181,7 +206,6 @@ describe('FileExplorer', () => {
   });
 
   it('asks for confirmation before overwriting an existing file', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/workspace');
 
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       workspaceReadDirectory: vi.fn().mockResolvedValue([]),
@@ -200,6 +224,7 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/workspace" />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -227,7 +252,6 @@ describe('FileExplorer', () => {
   });
 
   it('toggles gitignore visibility when clicking eye button', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/workspace');
 
     const mockNodes: WorkspaceFileNode[] = [
       {
@@ -249,6 +273,7 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/workspace" />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -266,7 +291,6 @@ describe('FileExplorer', () => {
   });
 
   it('collapses the root directory when clicking on its tree node', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/workspace');
 
     const mockRootNodes: WorkspaceFileNode[] = [
       {
@@ -291,6 +315,7 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/workspace" />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -317,14 +342,6 @@ describe('FileExplorer', () => {
   });
 
   it('renders multiple root nodes for multi-root workspace', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/multi-root');
-    localStorage.setItem(
-      'goose_workspace_folders',
-      JSON.stringify([
-        { path: '/mock/multi-root/backend', name: 'backend' },
-        { path: '/mock/multi-root/frontend', name: 'frontend' },
-      ])
-    );
 
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       workspaceReadDirectory: vi.fn().mockImplementation((root: string, relPath: string) => {
@@ -360,6 +377,10 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup
+          root="/mock/multi-root/backend"
+          extraFolders={['/mock/multi-root/frontend']}
+        />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -375,7 +396,6 @@ describe('FileExplorer', () => {
   });
 
   it('protects root folder from delete and rename in single-root workspace', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/workspace');
 
     const mockDeletePath = vi.fn().mockResolvedValue({ success: true });
     (window as unknown as { electron: Record<string, unknown> }).electron = {
@@ -389,6 +409,7 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/workspace" />
         <FileExplorer />
       </WorkspaceProvider>
     );
@@ -413,14 +434,6 @@ describe('FileExplorer', () => {
   });
 
   it('removes a root folder from multi-root workspace without physical deletion from disk', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/multi-root');
-    localStorage.setItem(
-      'goose_workspace_folders',
-      JSON.stringify([
-        { path: '/mock/multi-root/backend', name: 'backend' },
-        { path: '/mock/multi-root/frontend', name: 'frontend' },
-      ])
-    );
 
     const mockDeletePath = vi.fn().mockResolvedValue({ success: true });
     (window as unknown as { electron: Record<string, unknown> }).electron = {
@@ -434,6 +447,10 @@ describe('FileExplorer', () => {
 
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup
+          root="/mock/multi-root/backend"
+          extraFolders={['/mock/multi-root/frontend']}
+        />
         <FileExplorer />
       </WorkspaceProvider>
     );

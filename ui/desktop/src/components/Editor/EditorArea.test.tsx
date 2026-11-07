@@ -7,6 +7,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorArea, relativeToWorkspacePath } from './EditorArea';
 import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
 
+const TestWorkspaceSetup: React.FC<{ root: string; extraFolders?: string[] }> = ({
+  root,
+  extraFolders = [],
+}) => {
+  const { workspacePath, workspaceFolders, setWorkspacePath, addWorkspaceFolder } = useWorkspace();
+  const queueRef = React.useRef<string[]>(extraFolders.slice());
+
+  React.useEffect(() => {
+    if (!workspacePath) {
+      setWorkspacePath(root);
+      return;
+    }
+    const next = queueRef.current[0];
+    if (next && !workspaceFolders.some((f) => f.path === next)) {
+      queueRef.current.shift();
+      addWorkspaceFolder(next);
+    }
+  }, [workspacePath, workspaceFolders, setWorkspacePath, addWorkspaceFolder, root]);
+
+  return null;
+};
+
 vi.mock('@monaco-editor/react', () => {
   const MockEditor = ({
     value,
@@ -213,8 +235,22 @@ describe('EditorArea', () => {
     expect(screen.getByText('Открыть папку проекта...')).toBeDefined();
   });
 
+  it('hides workspace open buttons in EmptyEditorView when a workspace is already open', async () => {
+    render(
+      <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/workspace" />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Открыть папку проекта...')).toBeNull();
+    });
+    expect(screen.queryByText('Открыть файл .code-workspace...')).toBeNull();
+    expect(screen.getByText('Рабочее пространство Goose')).toBeDefined();
+  });
+
   it('opens files in tabs and displays Monaco editor content', async () => {
-    localStorage.setItem('goose_workspace_path', '/mock/workspace');
 
     render(
       <WorkspaceProvider>
@@ -456,17 +492,9 @@ describe('EditorArea', () => {
   });
 
   it('displays multi-root folder prefix in status bar and full path in title tooltip', async () => {
-    localStorage.setItem(
-      'goose_workspace_folders',
-      JSON.stringify([
-        { path: '/mock/backend', name: 'backend' },
-        { path: '/mock/frontend', name: 'frontend' },
-      ])
-    );
-    localStorage.setItem('goose_workspace_path', '/mock/backend');
-
     render(
       <WorkspaceProvider>
+        <TestWorkspaceSetup root="/mock/backend" extraFolders={['/mock/frontend']} />
         <TestFileOpener
           filesToOpen={[
             { path: '/mock/frontend/src/App.tsx' },

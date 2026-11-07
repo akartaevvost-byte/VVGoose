@@ -49,13 +49,13 @@ describe('WorkspaceContext', () => {
     };
   });
 
-  it('initializes with default values or localStorage', () => {
+  it('starts without a workspace even when one is cached in localStorage', () => {
     localStorage.setItem('goose_workspace_path', '/custom/path');
     localStorage.setItem('goose_chat_width', '500');
 
     const { result } = renderHook(() => useWorkspace(), { wrapper });
 
-    expect(result.current.workspacePath).toBe('/custom/path');
+    expect(result.current.workspacePath).toBe('');
     expect(result.current.chatWidth).toBe(500);
     expect(result.current.openFiles).toEqual([]);
     expect(result.current.activeFile).toBeNull();
@@ -161,7 +161,7 @@ describe('WorkspaceContext', () => {
     ]);
   });
 
-  it('restores lastOpenedWorkspace from electron settings on mount when local storage is empty', async () => {
+  it('does not restore lastOpenedWorkspace from electron settings on mount', async () => {
     vi.mocked(window.electron.getSetting).mockResolvedValueOnce({
       path: '/restored/workspace',
       type: 'folder',
@@ -171,12 +171,12 @@ describe('WorkspaceContext', () => {
 
     const { result } = renderHook(() => useWorkspace(), { wrapper });
 
-    await vi.waitFor(() => {
-      expect(result.current.workspacePath).toBe('/restored/workspace');
-      expect(result.current.workspaceFolders).toEqual([
-        { path: '/restored/workspace', name: 'workspace' },
-      ]);
+    await act(async () => {
+      await Promise.resolve();
     });
+
+    expect(result.current.workspacePath).toBe('');
+    expect(window.electron.getSetting).not.toHaveBeenCalledWith('lastOpenedWorkspace');
   });
 
   it('uses REQUEST_DIR instead of the saved workspace', async () => {
@@ -218,45 +218,6 @@ describe('WorkspaceContext', () => {
 
     expect(result.current.workspacePath).toBe('/projects/VVGoose');
     expect(result.current.workspaceKind).toBe('folder');
-  });
-
-  it('does not let a late workspace restore replace a folder the user just opened', async () => {
-    let resolveSetting: (value: {
-      path: string;
-      type: 'code-workspace';
-      name: string;
-      workspaceFilePath: string;
-      folders: Array<{ path: string; name: string }>;
-    }) => void = () => {};
-    vi.mocked(window.electron.getSetting).mockReturnValue(
-      new Promise((resolve) => {
-        resolveSetting = resolve;
-      }) as ReturnType<typeof window.electron.getSetting>
-    );
-
-    const { result } = renderHook(() => useWorkspace(), { wrapper });
-
-    act(() => {
-      result.current.setWorkspacePath('/projects/VVGoose');
-    });
-
-    await act(async () => {
-      resolveSetting({
-        path: '/kachestvo',
-        type: 'code-workspace',
-        name: 'качество',
-        workspaceFilePath: '/kachestvo/качество.code-workspace',
-        folders: [
-          { path: '/kachestvo', name: 'качество' },
-          { path: '/other', name: 'other' },
-        ],
-      });
-    });
-
-    expect(result.current.workspacePath).toBe('/projects/VVGoose');
-    expect(result.current.workspaceFolders).toEqual([
-      { path: '/projects/VVGoose', name: 'VVGoose' },
-    ]);
   });
 
   it('clamps chatWidth to min/max boundaries', () => {
