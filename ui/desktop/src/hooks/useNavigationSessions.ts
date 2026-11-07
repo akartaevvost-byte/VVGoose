@@ -4,9 +4,16 @@ import { useChatContext } from '../contexts/ChatContext';
 import { getSessionDisplayName } from '../sessions';
 import { AppEvents } from '../constants/events';
 import type { Session } from '../types/session';
+import { acpChatSessionActions } from '../acp/chatSessionStore';
+import { cancelAcpElicitationRequestsForSession } from '../acp/elicitationRequests';
+import { cancelAcpPermissionRequestsForSession } from '../acp/permissionRequests';
 import {
+  acpArchiveSession,
+  acpDeleteSession,
   acpGetSessionListItem,
+  acpListArchivedSessions,
   acpListRecentSessions,
+  acpUnarchiveSession,
   type SessionListItem,
 } from '../acp/sessions';
 import { groupSessionsByProject } from '../utils/projectSessions';
@@ -61,6 +68,8 @@ export function useNavigationSessions() {
   const chatContext = useChatContext();
 
   const [recentSessions, setRecentSessions] = useState<SessionListItem[]>([]);
+  const [archivedSessions, setArchivedSessions] = useState<SessionListItem[]>([]);
+  const [pendingReleaseId, setPendingReleaseId] = useState<string | null>(null);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const latestFetchIdRef = useRef(0);
   const recentSessionsByProject = useMemo(
@@ -83,9 +92,13 @@ export function useNavigationSessions() {
     const fetchId = ++latestFetchIdRef.current;
     setIsLoadingSessions(true);
     try {
-      const sessions = await acpListRecentSessions(MAX_RECENT_SESSIONS);
+      const [sessions, archived] = await Promise.all([
+        acpListRecentSessions(MAX_RECENT_SESSIONS),
+        acpListArchivedSessions(),
+      ]);
       if (fetchId === latestFetchIdRef.current) {
         setRecentSessions(sessions);
+        setArchivedSessions(archived);
       }
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
@@ -102,6 +115,7 @@ export function useNavigationSessions() {
 
     acpGetSessionListItem(activeSessionId)
       .then((item) => {
+        if (item.archivedAt) return;
         setRecentSessions((prev) => prependUnique(prev, item));
       })
       .catch((error) => {
@@ -208,6 +222,65 @@ export function useNavigationSessions() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!pendingReleaseId || currentSessionId === pendingReleaseId) return;
+    window.dispatchEvent(
+      new CustomEvent(AppEvents.SESSION_DELETED, { detail: { sessionId: pendingReleaseId } })
+    );
+    setPendingReleaseId(null);
+  }, [pendingReleaseId, currentSessionId]);
+
+  const releaseSession = useCallback(
+    (sessionId: string) => {
+      if (lastSessionIdRef.current === sessionId) {
+        lastSessionIdRef.current = null;
+      }
+      cancelAcpPermissionRequestsForSession(sessionId);
+      cancelAcpElicitationRequestsForSession(sessionId);
+      acpChatSessionActions.deleteSnapshot(sessionId);
+      if (currentSessionId === sessionId) {
+        navigate('/');
+        setPendingReleaseId(sessionId);
+        return;
+      }
+      window.dispatchEvent(new CustomEvent(AppEvents.SESSION_DELETED, { detail: { sessionId } }));
+    },
+    [currentSessionId, navigate]
+  );
+
+  const archiveSession = useCallback(
+    async (sessionId: string) => {
+      const session = recentSessions.find((item) => item.id === sessionId);
+      await acpArchiveSession(sessionId);
+      setRecentSessions((prev) => prev.filter((item) => item.id !== sessionId));
+      if (session) {
+        setArchivedSessions((prev) => [
+          { ...session, archivedAt: new Date().toISOString() },
+          ...prev.filter((item) => item.id !== sessionId),
+        ]);
+      }
+      releaseSession(sessionId);
+    },
+    [recentSessions, releaseSession]
+  );
+
+  const unarchiveSession = useCallback(async (sessionId: string) => {
+    await acpUnarchiveSession(sessionId);
+    setArchivedSessions((prev) => prev.filter((item) => item.id !== sessionId));
+    const listed = await acpListRecentSessions(MAX_RECENT_SESSIONS);
+    setRecentSessions(listed);
+  }, []);
+
+  const deleteSession = useCallback(
+    async (sessionId: string) => {
+      await acpDeleteSession(sessionId);
+      setRecentSessions((prev) => prev.filter((item) => item.id !== sessionId));
+      setArchivedSessions((prev) => prev.filter((item) => item.id !== sessionId));
+      releaseSession(sessionId);
+    },
+    [releaseSession]
+  );
+
   const handleNavClick = useCallback(
     (path: string) => {
       if (path === '/pair') {
@@ -235,9 +308,13 @@ export function useNavigationSessions() {
   return {
     recentSessions,
     recentSessionsByProject,
+    archivedSessions,
     isLoadingSessions,
     activeSessionId,
     fetchSessions,
+    archiveSession,
+    unarchiveSession,
+    deleteSession,
     handleNavClick,
     handleSessionClick,
   };

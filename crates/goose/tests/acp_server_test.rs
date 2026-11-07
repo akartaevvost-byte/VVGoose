@@ -319,6 +319,89 @@ fn test_list_sessions_pagination() {
 }
 
 #[test]
+fn test_list_sessions_filters_archived_sessions() {
+    run_test(async {
+        let data_root = tempfile::tempdir().unwrap();
+        let cwd = Path::new("/tmp/acp-session-list-archive");
+        let session_manager = SessionManager::new(data_root.path().to_path_buf());
+        let active = session_manager
+            .create_session(
+                cwd.to_path_buf(),
+                "Active chat".to_string(),
+                SessionType::User,
+                GooseMode::default(),
+            )
+            .await
+            .unwrap();
+        session_manager
+            .add_message(&active.id, &Message::user().with_text("still active"))
+            .await
+            .unwrap();
+        let archived = session_manager
+            .create_session(
+                cwd.to_path_buf(),
+                "Archived chat".to_string(),
+                SessionType::User,
+                GooseMode::default(),
+            )
+            .await
+            .unwrap();
+        session_manager
+            .add_message(&archived.id, &Message::user().with_text("put away"))
+            .await
+            .unwrap();
+        session_manager
+            .update(&archived.id)
+            .archived_at(Some(chrono::Utc::now()))
+            .apply()
+            .await
+            .unwrap();
+        drop(session_manager);
+
+        let conn = new_connection(data_root.path()).await;
+        let active_response = list_sessions_request(&conn, ListSessionsRequest::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            active_response
+                .sessions
+                .iter()
+                .filter_map(|session| session.title.clone())
+                .collect::<Vec<_>>(),
+            vec!["Active chat".to_string()]
+        );
+
+        let mut archived_meta = serde_json::Map::new();
+        archived_meta.insert(
+            "archived".to_string(),
+            serde_json::Value::String("archived".to_string()),
+        );
+        let archived_response =
+            list_sessions_request(&conn, ListSessionsRequest::new().meta(archived_meta))
+                .await
+                .unwrap();
+        assert_eq!(
+            archived_response
+                .sessions
+                .iter()
+                .filter_map(|session| session.title.clone())
+                .collect::<Vec<_>>(),
+            vec!["Archived chat".to_string()]
+        );
+
+        let mut invalid_meta = serde_json::Map::new();
+        invalid_meta.insert(
+            "archived".to_string(),
+            serde_json::Value::String("nope".to_string()),
+        );
+        let error = list_sessions_request(&conn, ListSessionsRequest::new().meta(invalid_meta))
+            .await
+            .unwrap_err();
+        assert_invalid_params(error);
+    });
+}
+
+#[test]
 fn test_list_sessions_query_filters_results() {
     run_test(async {
         let data_root = tempfile::tempdir().unwrap();

@@ -2375,8 +2375,35 @@
   "navigation.itemSkills": {
     "defaultMessage": "Навыки"
   },
+  "navigationPanel.archive": {
+    "defaultMessage": "Архив"
+  },
+  "navigationPanel.archiveFailed": {
+    "defaultMessage": "Не удалось архивировать чат «{name}»: {error}"
+  },
+  "navigationPanel.archiveSession": {
+    "defaultMessage": "Архивировать"
+  },
+  "navigationPanel.cancel": {
+    "defaultMessage": "Отмена"
+  },
   "navigationPanel.chats": {
     "defaultMessage": "Чаты"
+  },
+  "navigationPanel.deleteChat": {
+    "defaultMessage": "Удалить"
+  },
+  "navigationPanel.deleteChatFailed": {
+    "defaultMessage": "Не удалось удалить чат «{name}»: {error}"
+  },
+  "navigationPanel.deleteChatMessage": {
+    "defaultMessage": "Удалить чат «{name}»? Это действие нельзя отменить."
+  },
+  "navigationPanel.deleteChatSuccess": {
+    "defaultMessage": "Чат удалён"
+  },
+  "navigationPanel.deleteChatTitle": {
+    "defaultMessage": "Удалить чат"
   },
   "navigationPanel.loadingChats": {
     "defaultMessage": "Загрузка чатов…"
@@ -2398,6 +2425,12 @@
   },
   "navigationPanel.noChats": {
     "defaultMessage": "Нет недавних чатов"
+  },
+  "navigationPanel.restoreFailed": {
+    "defaultMessage": "Не удалось вернуть чат «{name}» из архива: {error}"
+  },
+  "navigationPanel.restoreSession": {
+    "defaultMessage": "Вернуть из архива"
   },
   "navigationPanel.statusError": {
     "defaultMessage": "Ошибка"

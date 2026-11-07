@@ -2525,8 +2525,35 @@
   "navigation.itemSkills": {
     "defaultMessage": "Skills"
   },
+  "navigationPanel.archive": {
+    "defaultMessage": "Archive"
+  },
+  "navigationPanel.archiveFailed": {
+    "defaultMessage": "Couldn't archive chat \"{name}\": {error}"
+  },
+  "navigationPanel.archiveSession": {
+    "defaultMessage": "Archive"
+  },
+  "navigationPanel.cancel": {
+    "defaultMessage": "Cancel"
+  },
   "navigationPanel.chats": {
     "defaultMessage": "Chats"
+  },
+  "navigationPanel.deleteChat": {
+    "defaultMessage": "Delete"
+  },
+  "navigationPanel.deleteChatFailed": {
+    "defaultMessage": "Couldn't delete chat \"{name}\": {error}"
+  },
+  "navigationPanel.deleteChatMessage": {
+    "defaultMessage": "Delete chat \"{name}\"? This cannot be undone."
+  },
+  "navigationPanel.deleteChatSuccess": {
+    "defaultMessage": "Chat deleted"
+  },
+  "navigationPanel.deleteChatTitle": {
+    "defaultMessage": "Delete chat"
   },
   "navigationPanel.loadingChats": {
     "defaultMessage": "Loading chats…"
@@ -2548,6 +2575,12 @@
   },
   "navigationPanel.noChats": {
     "defaultMessage": "No recent chats"
+  },
+  "navigationPanel.restoreFailed": {
+    "defaultMessage": "Couldn't restore chat \"{name}\": {error}"
+  },
+  "navigationPanel.restoreSession": {
+    "defaultMessage": "Restore from archive"
   },
   "navigationPanel.statusError": {
     "defaultMessage": "Error"

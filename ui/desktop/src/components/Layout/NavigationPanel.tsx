@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router';
 import { AudioLines, ChevronDown, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'react-toastify';
 import { useNavigationContext } from './NavigationContext';
+import { SessionContextMenu } from './SessionContextMenu';
 import { useConfig } from '../ConfigContext';
 import { useNavigationSessions } from '../../hooks/useNavigationSessions';
 import {
@@ -22,6 +24,8 @@ import type { ProjectGroup } from '../../utils/projectSessions';
 import { defineMessages, useIntl } from '../../i18n';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { directoryIsInsideWorkspace } from '../../utils/windowWorkspace';
+import { errorMessage } from '../../utils/conversionUtils';
+import { ConfirmationModal } from '../ui/ConfirmationModal';
 
 type StreamState = 'idle' | 'loading' | 'streaming' | 'error';
 
@@ -34,6 +38,38 @@ const i18n = defineMessages({
   chats: {
     id: 'navigationPanel.chats',
     defaultMessage: 'Chats',
+  },
+  archive: {
+    id: 'navigationPanel.archive',
+    defaultMessage: 'Archive',
+  },
+  archiveFailed: {
+    id: 'navigationPanel.archiveFailed',
+    defaultMessage: 'Couldn\'t archive chat "{name}": {error}',
+  },
+  restoreFailed: {
+    id: 'navigationPanel.restoreFailed',
+    defaultMessage: 'Couldn\'t restore chat "{name}": {error}',
+  },
+  deleteChatTitle: {
+    id: 'navigationPanel.deleteChatTitle',
+    defaultMessage: 'Delete chat',
+  },
+  deleteChatMessage: {
+    id: 'navigationPanel.deleteChatMessage',
+    defaultMessage: 'Delete chat "{name}"? This cannot be undone.',
+  },
+  deleteChatSuccess: {
+    id: 'navigationPanel.deleteChatSuccess',
+    defaultMessage: 'Chat deleted',
+  },
+  deleteChatFailed: {
+    id: 'navigationPanel.deleteChatFailed',
+    defaultMessage: 'Couldn\'t delete chat "{name}": {error}',
+  },
+  cancel: {
+    id: 'navigationPanel.cancel',
+    defaultMessage: 'Cancel',
   },
   noChats: {
     id: 'navigationPanel.noChats',
@@ -120,8 +156,10 @@ interface SessionRowProps {
   active: boolean;
   isLiveVoiceActive: boolean;
   status: SessionStatus | undefined;
+  archived?: boolean;
   onClick: () => void;
   onRenamed: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
 }
 
 const formatTimestamp = (value?: string): string | null => {
@@ -176,8 +214,10 @@ const SessionRow: React.FC<SessionRowProps> = ({
   active,
   isLiveVoiceActive,
   status,
+  archived = false,
   onClick,
   onRenamed,
+  onContextMenu,
 }) => {
   const intl = useIntl();
   const [isEditing, setIsEditing] = useState(false);
@@ -198,10 +238,17 @@ const SessionRow: React.FC<SessionRowProps> = ({
     <Tooltip open={tooltipOpen && !isEditing} onOpenChange={setTooltipOpen} delayDuration={400}>
       <TooltipTrigger asChild>
         <div
-          onClick={() => !isEditing && onClick()}
+          onClick={() => !archived && !isEditing && onClick()}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setTooltipOpen(false);
+            onContextMenu(event);
+          }}
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer text-sm',
+            'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm',
             'hover:bg-background-tertiary/60 transition-colors',
+            !archived && 'cursor-pointer',
             active && 'bg-background-tertiary'
           )}
         >
@@ -217,7 +264,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
               onRenamed();
             }}
             placeholder={intl.formatMessage(i18n.untitledSession)}
-            disabled={isStreaming}
+            disabled={archived || isStreaming}
             singleClickEdit={false}
             className="truncate text-text-primary flex-1 !px-0 !py-0 hover:bg-transparent"
             editClassName="!text-sm"
@@ -262,9 +309,13 @@ export const Navigation: React.FC<{
   const {
     recentSessions,
     recentSessionsByProject,
+    archivedSessions,
     isLoadingSessions,
     activeSessionId,
     fetchSessions,
+    archiveSession,
+    unarchiveSession,
+    deleteSession,
     handleNavClick,
     handleSessionClick,
   } = useNavigationSessions();
@@ -312,7 +363,16 @@ export const Navigation: React.FC<{
   }, [isNavExpanded, fetchSessions]);
 
   const [isChatsExpanded, setIsChatsExpanded] = useState(true);
+  const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    session: SessionListItem;
+    archived: boolean;
+  } | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<SessionListItem | null>(null);
+  const archiveHeaderRef = useRef<HTMLButtonElement>(null);
 
   const { workspaceFolders, openFolder } = useWorkspace();
 
@@ -326,6 +386,75 @@ export const Navigation: React.FC<{
     },
     [clearUnread, handleSessionClick, openFolder, workspaceFolders]
   );
+
+  const scrollArchiveIntoViewRef = useRef(false);
+  const revealArchive = useCallback(() => {
+    scrollArchiveIntoViewRef.current = true;
+    setIsArchiveExpanded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isArchiveExpanded || !scrollArchiveIntoViewRef.current) return;
+    scrollArchiveIntoViewRef.current = false;
+    archiveHeaderRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [isArchiveExpanded, archivedSessions.length]);
+
+  const handleContextMenu = useCallback(
+    (session: SessionListItem, archived: boolean, event: React.MouseEvent) => {
+      setContextMenu({ x: event.clientX, y: event.clientY, session, archived });
+    },
+    []
+  );
+
+  const handleArchive = useCallback(
+    async (session: SessionListItem) => {
+      try {
+        await archiveSession(session.id);
+        revealArchive();
+      } catch (error) {
+        toast.error(
+          intl.formatMessage(i18n.archiveFailed, {
+            name: session.name,
+            error: errorMessage(error, 'Unknown error'),
+          })
+        );
+      }
+    },
+    [archiveSession, intl, revealArchive]
+  );
+
+  const handleUnarchive = useCallback(
+    async (session: SessionListItem) => {
+      try {
+        await unarchiveSession(session.id);
+      } catch (error) {
+        toast.error(
+          intl.formatMessage(i18n.restoreFailed, {
+            name: session.name,
+            error: errorMessage(error, 'Unknown error'),
+          })
+        );
+      }
+    },
+    [intl, unarchiveSession]
+  );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!sessionToDelete) return;
+    const session = sessionToDelete;
+    setSessionToDelete(null);
+    try {
+      await deleteSession(session.id);
+      toast.success(intl.formatMessage(i18n.deleteChatSuccess));
+    } catch (error) {
+      toast.error(
+        intl.formatMessage(i18n.deleteChatFailed, {
+          name: session.name,
+          error: errorMessage(error, 'Unknown error'),
+        })
+      );
+    }
+  }, [deleteSession, intl, sessionToDelete]);
 
   const toggleProjectCollapsed = useCallback((path: string) => {
     setCollapsedProjects((prev) => {
@@ -410,6 +539,7 @@ export const Navigation: React.FC<{
                           status={sessionStatuses.get(session.id)}
                           onClick={() => openSession(session)}
                           onRenamed={fetchSessions}
+                          onContextMenu={(event) => handleContextMenu(session, false, event)}
                         />
                       ))}
                   </React.Fragment>
@@ -425,8 +555,43 @@ export const Navigation: React.FC<{
                   status={sessionStatuses.get(session.id)}
                   onClick={() => openSession(session)}
                   onRenamed={fetchSessions}
+                  onContextMenu={(event) => handleContextMenu(session, false, event)}
                 />
               ))
+            )}
+          </div>
+        )}
+        {archivedSessions.length > 0 && (
+          <div className="px-2 pb-2">
+            <button
+              ref={archiveHeaderRef}
+              onClick={() => setIsArchiveExpanded((open) => !open)}
+              aria-expanded={isArchiveExpanded}
+              className="flex items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-text-primary transition-colors"
+            >
+              {isArchiveExpanded ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+              <span>{intl.formatMessage(i18n.archive)}</span>
+            </button>
+            {isArchiveExpanded && (
+              <div className="max-h-48 overflow-y-auto">
+                {archivedSessions.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    active={false}
+                    isLiveVoiceActive={false}
+                    status={undefined}
+                    archived
+                    onClick={() => undefined}
+                    onRenamed={fetchSessions}
+                    onContextMenu={(event) => handleContextMenu(session, true, event)}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -439,6 +604,29 @@ export const Navigation: React.FC<{
           onClick={() => handleNavClick(SETTINGS_NAV_ITEM.path)}
         />
       </div>
+      {contextMenu && (
+        <SessionContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          archived={contextMenu.archived}
+          onClose={() => setContextMenu(null)}
+          onArchive={() => void handleArchive(contextMenu.session)}
+          onUnarchive={() => void handleUnarchive(contextMenu.session)}
+          onDelete={() => setSessionToDelete(contextMenu.session)}
+        />
+      )}
+      <ConfirmationModal
+        isOpen={sessionToDelete !== null}
+        title={intl.formatMessage(i18n.deleteChatTitle)}
+        message={intl.formatMessage(i18n.deleteChatMessage, {
+          name: sessionToDelete?.name ?? '',
+        })}
+        confirmLabel={intl.formatMessage(i18n.deleteChatTitle)}
+        cancelLabel={intl.formatMessage(i18n.cancel)}
+        confirmVariant="destructive"
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => setSessionToDelete(null)}
+      />
     </motion.div>
   );
 };

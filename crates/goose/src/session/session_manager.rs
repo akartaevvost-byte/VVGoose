@@ -371,12 +371,22 @@ pub(crate) struct SessionListPage {
     pub(crate) next_cursor: Option<SessionListCursor>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum SessionArchivedFilter {
+    #[default]
+    Any,
+    Active,
+    Archived,
+}
+
 #[derive(Debug, Default, Clone)]
 pub(crate) struct SessionListFilters<'a> {
     pub(crate) types: Option<&'a [SessionType]>,
     pub(crate) working_dir: Option<&'a Path>,
     pub(crate) keyword: Option<&'a str>,
     pub(crate) only_sessions_with_messages: bool,
+    pub(crate) archived: SessionArchivedFilter,
 }
 
 #[derive(Debug, Clone)]
@@ -2323,6 +2333,15 @@ impl SessionStorage {
         if filters.working_dir.is_some() {
             where_clauses.push("s.working_dir = ?".to_string());
         }
+        match filters.archived {
+            SessionArchivedFilter::Any => {}
+            SessionArchivedFilter::Active => {
+                where_clauses.push("s.archived_at IS NULL".to_string());
+            }
+            SessionArchivedFilter::Archived => {
+                where_clauses.push("s.archived_at IS NOT NULL".to_string());
+            }
+        }
         if !keywords.is_empty() {
             where_clauses.push(message_keyword_clause(keywords.len()));
         }
@@ -3261,6 +3280,30 @@ mod tests {
             .instructions("Follow the recipe")
             .build()
             .unwrap()
+    }
+
+    async fn session_ids_for_archived_filter(
+        sm: &SessionManager,
+        archived: SessionArchivedFilter,
+    ) -> Vec<String> {
+        let types = [SessionType::User];
+        sm.list_sessions_paged(SessionListPageQuery {
+            filters: SessionListFilters {
+                types: Some(&types),
+                only_sessions_with_messages: true,
+                archived,
+                ..Default::default()
+            },
+            cursor: None,
+            page_size: 10,
+            include_last_message_snippet: false,
+        })
+        .await
+        .unwrap()
+        .sessions
+        .into_iter()
+        .map(|session| session.id)
+        .collect()
     }
 
     async fn create_session_for_list(
@@ -4514,6 +4557,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_session_list_paged_filters_archived_sessions() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let active = create_session_for_list(&sm, "/tmp/session-list", true).await;
+        let archived = create_session_for_list(&sm, "/tmp/session-list", true).await;
+        sm.update(&archived)
+            .archived_at(Some(Utc::now()))
+            .apply()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            session_ids_for_archived_filter(&sm, SessionArchivedFilter::Active).await,
+            vec![active.clone()]
+        );
+        assert_eq!(
+            session_ids_for_archived_filter(&sm, SessionArchivedFilter::Archived).await,
+            vec![archived.clone()]
+        );
+        let mut any_ids = session_ids_for_archived_filter(&sm, SessionArchivedFilter::Any).await;
+        any_ids.sort();
+        let mut expected_any = vec![active, archived];
+        expected_any.sort();
+        assert_eq!(any_ids, expected_any);
+    }
+
+    #[tokio::test]
     async fn test_session_list_paged_keyword_combines_with_cwd_and_pagination() {
         let temp_dir = TempDir::new().unwrap();
         let sm = SessionManager::new(temp_dir.path().to_path_buf());
@@ -4534,6 +4604,7 @@ mod tests {
             working_dir: Some(Path::new("/tmp/session-list/a")),
             keyword: Some("postgres"),
             only_sessions_with_messages: true,
+            ..Default::default()
         };
         let cursor = sm
             .list_sessions_paged(SessionListPageQuery {

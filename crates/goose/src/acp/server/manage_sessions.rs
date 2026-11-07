@@ -237,14 +237,17 @@ impl AcpConnection {
         &self,
         req: ArchiveSessionRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        let session_id = req.session_id;
+        self.runs().cancel_agent_run(&session_id);
+        self.live_voice.stop_session_interaction(&session_id).await;
         self.services
             .session_manager
-            .update(&req.session_id)
+            .update(&session_id)
             .archived_at(Some(chrono::Utc::now()))
             .apply()
             .await
             .internal_err()?;
-        self.services.release_session(&req.session_id).await;
+        self.services.release_session(&session_id).await;
         Ok(EmptyResponse {})
     }
 

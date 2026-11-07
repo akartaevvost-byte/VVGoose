@@ -2,10 +2,13 @@ import { methods, type SessionInfo } from '@agentclientprotocol/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAcpClient } from '../acpConnection';
 import {
+  acpArchiveSession,
   acpGetSessionListItem,
+  acpListArchivedSessions,
   acpListSessions,
   acpLoadSession,
   acpNewSession,
+  acpUnarchiveSession,
   sessionInfoToSession,
 } from '../sessions';
 
@@ -82,6 +85,53 @@ describe('ACP sessions', () => {
     await acpListSessions(undefined, { includeAcp: true });
     expect(client.connection.agent.request).toHaveBeenLastCalledWith(methods.agent.session.list, {
       _meta: { types: ['user', 'scheduled', 'acp'] },
+    });
+  });
+
+  it('pages through archived sessions and stops at the cursor end', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        sessions: [sessionInfo({ sessionId: 'archived-1' })],
+        nextCursor: 'page-2',
+      })
+      .mockResolvedValueOnce({
+        sessions: [sessionInfo({ sessionId: 'archived-2' })],
+        nextCursor: null,
+      });
+    vi.mocked(getAcpClient).mockResolvedValue({
+      connection: { agent: { request } },
+    } as unknown as Awaited<ReturnType<typeof getAcpClient>>);
+
+    const sessions = await acpListArchivedSessions();
+
+    expect(request).toHaveBeenNthCalledWith(1, methods.agent.session.list, {
+      _meta: { types: ['user', 'scheduled'], archived: 'archived' },
+    });
+    expect(request).toHaveBeenNthCalledWith(2, methods.agent.session.list, {
+      cursor: 'page-2',
+      _meta: { types: ['user', 'scheduled'], archived: 'archived' },
+    });
+    expect(sessions.map((session) => session.id)).toEqual(['archived-1', 'archived-2']);
+  });
+
+  it('archives and restores a session through the unstable session methods', async () => {
+    const client = {
+      goose: {
+        sessionArchive_unstable: vi.fn().mockResolvedValue(undefined),
+        sessionUnarchive_unstable: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    vi.mocked(getAcpClient).mockResolvedValue(
+      client as unknown as Awaited<ReturnType<typeof getAcpClient>>
+    );
+
+    await acpArchiveSession('session-1');
+    await acpUnarchiveSession('session-1');
+
+    expect(client.goose.sessionArchive_unstable).toHaveBeenCalledWith({ sessionId: 'session-1' });
+    expect(client.goose.sessionUnarchive_unstable).toHaveBeenCalledWith({
+      sessionId: 'session-1',
     });
   });
 
