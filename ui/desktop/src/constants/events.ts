@@ -10,6 +10,7 @@ export enum AppEvents {
   SESSION_FORKED = 'session-forked',
   SESSION_STATUS_UPDATE = 'session-status-update',
   ADD_ACTIVE_SESSION = 'add-active-session',
+  CHAT_TAB_CLOSED = 'chat-tab-closed',
   CLEAR_INITIAL_MESSAGE = 'clear-initial-message',
   SCROLL_CHAT_TO_BOTTOM = 'scroll-chat-to-bottom',
   RESPONSE_STYLE_CHANGED = 'responseStyleChanged',

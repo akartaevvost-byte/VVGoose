@@ -11,6 +11,7 @@ import { NavigationProvider, useNavigationContext } from './NavigationContext';
 import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
 import { Navigation } from './NavigationPanel';
 import { EditorArea } from '../Editor/EditorArea';
+import { ChatTabs } from './ChatTabs';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { PanelLayoutIcon } from './PanelLayoutIcon';
 import { Z_INDEX } from './constants';
@@ -214,17 +215,18 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
 
       const isModifier = e.metaKey || e.ctrlKey;
 
-      if (isModifier && (e.key.toLowerCase() === 'j' || e.code === 'KeyJ') && !e.shiftKey && !e.altKey) {
+      if (
+        isModifier &&
+        (e.key.toLowerCase() === 'j' || e.code === 'KeyJ') &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
         e.preventDefault();
         setIsChatVisible((v) => !v);
         return;
       }
 
-      if (
-        isModifier &&
-        e.shiftKey &&
-        (e.key.toLowerCase() === 'e' || e.code === 'KeyE')
-      ) {
+      if (isModifier && e.shiftKey && (e.key.toLowerCase() === 'e' || e.code === 'KeyE')) {
         e.preventDefault();
         setIsExplorerVisible((v) => !v);
       }
@@ -272,7 +274,9 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         className="h-9 w-full flex items-center justify-between px-3 border-b border-border-primary/40 bg-background-secondary/30 select-none flex-shrink-0 app-drag-region relative"
       >
         {/* Left Section: Traffic light spacing on macOS */}
-        <div className={cn('flex items-center gap-1.5', needsTrafficLightInset ? 'w-[76px]' : 'w-2')} />
+        <div
+          className={cn('flex items-center gap-1.5', needsTrafficLightInset ? 'w-[76px]' : 'w-2')}
+        />
 
         {/* Right Section: Workspace & Layout toggles */}
         <div className="flex items-center gap-1 no-drag">
@@ -392,28 +396,31 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                   isEditorVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1'
                 )}
               >
-                <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
-                  {isOnPairRoute ? (
-                    <>
-                      <Outlet />
-                      <ChatSessionsContainer
-                        setChat={setChat}
-                        activeSessions={activeSessions}
-                        liveVoice={liveVoice}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <Outlet />
-                      <div className="hidden">
+                <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-border-primary bg-background-primary">
+                  <ChatTabs sessionIds={activeSessions.map((session) => session.sessionId)} />
+                  <div className="relative min-h-0 flex-1">
+                    {isOnPairRoute ? (
+                      <>
+                        <Outlet />
                         <ChatSessionsContainer
                           setChat={setChat}
                           activeSessions={activeSessions}
                           liveVoice={liveVoice}
                         />
-                      </div>
-                    </>
-                  )}
+                      </>
+                    ) : (
+                      <>
+                        <Outlet />
+                        <div className="hidden">
+                          <ChatSessionsContainer
+                            setChat={setChat}
+                            activeSessions={activeSessions}
+                            liveVoice={liveVoice}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -476,7 +483,9 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
             {/* Empty state when all workspace panels are closed */}
             {!isChatVisible && !isEditorVisible && !isExplorerVisible && (
               <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-text-secondary select-none">
-                <p className="text-sm font-medium mb-3 text-text-primary">Все рабочие панели скрыты</p>
+                <p className="text-sm font-medium mb-3 text-text-primary">
+                  Все рабочие панели скрыты
+                </p>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"

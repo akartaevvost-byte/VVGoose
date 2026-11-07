@@ -1,13 +1,13 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { X } from 'lucide-react';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { getFileIcon } from '../FileExplorer/fileIcons';
+import { TabStrip } from '../Layout/TabStrip';
 import { cn } from '../../utils';
 
 export const EditorTabs: React.FC = () => {
   const { openFiles, activeFilePath, setActiveFilePath, setSelectedFile, closeFile } =
     useWorkspace();
-  const tabsContainerRef = useRef<HTMLDivElement>(null);
 
   if (openFiles.length === 0) {
     return null;
@@ -19,7 +19,6 @@ export const EditorTabs: React.FC = () => {
   };
 
   const handleTabAuxClick = (e: React.MouseEvent, filePath: string) => {
-    // Middle click to close tab
     if (e.button === 1) {
       e.preventDefault();
       e.stopPropagation();
@@ -28,32 +27,32 @@ export const EditorTabs: React.FC = () => {
   };
 
   return (
-    <div
-      ref={tabsContainerRef}
-      className="no-drag flex items-center h-9 bg-background-secondary/80 border-b border-border-primary px-1 overflow-x-auto no-scrollbar select-none"
+    <TabStrip
+      testId="editor-tabs-scroller"
+      previousLabel="Предыдущие вкладки"
+      nextLabel="Следующие вкладки"
+      revealKey={activeFilePath ?? ''}
     >
       {openFiles.map((tab) => {
         const isActive = tab.path === activeFilePath;
         return (
           <div
             key={tab.path}
+            data-tab
+            data-editor-tab
+            data-active={isActive ? 'true' : 'false'}
             onClick={() => handleTabClick(tab.path)}
             onAuxClick={(e) => handleTabAuxClick(e, tab.path)}
             title={tab.path}
             className={cn(
-              'no-drag group relative flex items-center gap-2 h-7 px-3 text-xs rounded-md cursor-pointer transition-colors max-w-[200px]',
+              'no-drag group relative flex shrink-0 items-center gap-2 h-7 px-3 text-xs rounded-md cursor-pointer transition-colors max-w-[200px]',
               isActive
                 ? 'bg-background-tertiary text-text-primary font-medium shadow-xs'
                 : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/50'
             )}
           >
-            {/* File Icon */}
             <span className="flex-shrink-0 pointer-events-none">{getFileIcon(tab.name)}</span>
-
-            {/* File Name */}
             <span className="truncate flex-1 pointer-events-none">{tab.name}</span>
-
-            {/* Dirty or Close Indicator */}
             <div className="flex items-center justify-center w-5 h-5 ml-1">
               {tab.isDirty ? (
                 <span
@@ -88,6 +87,6 @@ export const EditorTabs: React.FC = () => {
           </div>
         );
       })}
-    </div>
+    </TabStrip>
   );
 };

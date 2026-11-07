@@ -37,7 +37,10 @@ import LauncherView from './components/LauncherView';
 
 import 'react-toastify/dist/ReactToastify.css';
 import { useConfig } from './components/ConfigContext';
-import { ModelAndProviderProvider, useModelAndProvider } from './components/ModelAndProviderContext';
+import {
+  ModelAndProviderProvider,
+  useModelAndProvider,
+} from './components/ModelAndProviderContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { FeaturesProvider } from './contexts/FeaturesContext';
 import PermissionSettingsView from './components/settings/permission/PermissionSetting';
@@ -416,13 +419,20 @@ export function AppInner() {
       });
     };
 
+    const handleChatTabClosed = (event: Event) => {
+      const { sessionId } = (event as CustomEvent<{ sessionId: string }>).detail;
+      setActiveSessions((prev) => prev.filter((session) => session.sessionId !== sessionId));
+    };
+
     window.addEventListener(AppEvents.ADD_ACTIVE_SESSION, handleAddActiveSession);
     window.addEventListener(AppEvents.CLEAR_INITIAL_MESSAGE, handleClearInitialMessage);
     window.addEventListener(AppEvents.SESSION_DELETED, handleSessionDeleted);
+    window.addEventListener(AppEvents.CHAT_TAB_CLOSED, handleChatTabClosed);
     return () => {
       window.removeEventListener(AppEvents.ADD_ACTIVE_SESSION, handleAddActiveSession);
       window.removeEventListener(AppEvents.CLEAR_INITIAL_MESSAGE, handleClearInitialMessage);
       window.removeEventListener(AppEvents.SESSION_DELETED, handleSessionDeleted);
+      window.removeEventListener(AppEvents.CHAT_TAB_CLOSED, handleChatTabClosed);
     };
   }, []);
 
