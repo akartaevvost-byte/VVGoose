@@ -285,6 +285,25 @@ describe('AppLayout 3-panel layout', () => {
     fireEvent.keyDown(window, { key: '`', metaKey: true });
     expect(screen.queryByTestId('terminal-panel')).toBeNull();
   });
+
+  it('renders semantic FolderTree icon for explorer toggle and distinguishes it from navigation toggle', () => {
+    renderWithProviders('/pair');
+
+    const explorer = screen.getByTitle('Toggle File Explorer (⌘⇧E)');
+    const nav = screen.getByTitle('Collapse navigation');
+
+    expect(explorer.querySelector('svg')?.classList.contains('lucide-folder-tree')).toBe(true);
+    expect(explorer.querySelector('svg')?.getAttribute('class')).toContain('fill-current');
+    expect(explorer.querySelector('line[x1="5.8"]')).toBeNull();
+
+    expect(nav.querySelector('svg')?.classList.contains('lucide-folder-tree')).toBe(false);
+    expect(nav.querySelector('line[x1="5.8"]')).not.toBeNull();
+    expect(nav.querySelector('line[x1="10.2"]')).not.toBeNull();
+
+    fireEvent.click(explorer);
+    expect(explorer.querySelector('svg')?.classList.contains('lucide-folder-tree')).toBe(true);
+    expect(explorer.querySelector('svg')?.getAttribute('class')).not.toContain('fill-current');
+  });
 });
 
 describe('AppLayout swapChatAndExplorer layout', () => {
@@ -394,11 +413,12 @@ describe('AppLayout swapChatAndExplorer layout', () => {
     const chat = screen.getByTitle('Toggle chat (⌘J)');
     const editor = screen.getByTitle('Toggle editor');
     const explorer = screen.getByTitle('Toggle File Explorer (⌘⇧E)');
+    const nav = screen.getByTitle('Collapse navigation');
     expect(isBefore(explorer, editor)).toBe(true);
     expect(isBefore(editor, chat)).toBe(true);
-    // The files button highlights the left slot of the layout icon
-    const iconPath = explorer.querySelector('path')?.getAttribute('d') ?? '';
-    expect(iconPath.startsWith('M 3.5')).toBe(true);
+    expect(explorer.querySelector('svg')?.classList.contains('lucide-folder-tree')).toBe(true);
+    expect(explorer.querySelector('line[x1="5.8"]')).toBeNull();
+    expect(nav.querySelector('svg')?.classList.contains('lucide-folder-tree')).toBe(false);
   });
 
   it('keeps the chat pinned to the right edge when swapped and the editor is hidden', async () => {
@@ -481,6 +501,13 @@ describe('AppLayout swapChatAndExplorer layout', () => {
 
     expect(isBefore(screen.getByText('Чат'), screen.getByText('Редактор'))).toBe(true);
     expect(isBefore(screen.getByText('Редактор'), screen.getByText('Файлы'))).toBe(true);
+
+    const filesBtn = screen.getByText('Файлы').closest('button');
+    expect(filesBtn?.querySelector('svg')?.classList.contains('lucide-folder-tree')).toBe(true);
+    expect(filesBtn?.querySelector('line[x1="5.8"]')).toBeNull();
+
+    fireEvent.click(filesBtn!);
+    expect(screen.getByTestId('file-explorer')).toBeDefined();
   });
 
   it('orders the empty state buttons files, editor, chat when swapped', async () => {
@@ -491,5 +518,12 @@ describe('AppLayout swapChatAndExplorer layout', () => {
 
     expect(isBefore(screen.getByText('Файлы'), screen.getByText('Редактор'))).toBe(true);
     expect(isBefore(screen.getByText('Редактор'), screen.getByText('Чат'))).toBe(true);
+
+    const filesBtn = screen.getByText('Файлы').closest('button');
+    expect(filesBtn?.querySelector('svg')?.classList.contains('lucide-folder-tree')).toBe(true);
+    expect(filesBtn?.querySelector('line[x1="5.8"]')).toBeNull();
+
+    fireEvent.click(filesBtn!);
+    expect(screen.getByTestId('file-explorer')).toBeDefined();
   });
 });

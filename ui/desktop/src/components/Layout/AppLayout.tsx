@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IpcRendererEvent } from 'electron';
 import { Outlet, useLocation } from 'react-router';
 import { motion } from 'framer-motion';
-import { MessageSquare, Terminal } from 'lucide-react';
+import { FolderTree, MessageSquare, Terminal } from 'lucide-react';
 import { defineMessages, useIntl } from '../../i18n';
 import { Button } from '../ui/button';
 import ChatSessionsContainer from '../ChatSessionsContainer';
@@ -390,9 +390,11 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
       active={isExplorerVisible}
       onClick={() => setIsExplorerVisible((v) => !v)}
     >
-      <PanelLayoutIcon
-        position={swapChatAndExplorer ? 'left' : 'right'}
-        isOpen={isExplorerVisible}
+      <FolderTree
+        className={cn(
+          'w-4 h-4 pointer-events-none transition-colors',
+          isExplorerVisible && 'fill-current'
+        )}
       />
     </PanelToggleButton>
   );
@@ -633,7 +635,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                         onClick={() => setIsExplorerVisible(true)}
                         className="cursor-pointer"
                       >
-                        <PanelLayoutIcon position="left" isOpen={true} className="mr-1.5" />
+                        <FolderTree className="w-3.5 h-3.5 mr-1.5" />
                         Файлы
                       </Button>
                       <Button
@@ -699,7 +701,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                         onClick={() => setIsExplorerVisible(true)}
                         className="cursor-pointer"
                       >
-                        <PanelLayoutIcon position="right" isOpen={true} className="mr-1.5" />
+                        <FolderTree className="w-3.5 h-3.5 mr-1.5" />
                         Файлы
                       </Button>
                     </>
