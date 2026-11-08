@@ -1,11 +1,26 @@
 /**
  * @vitest-environment jsdom
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppEvents } from '../../constants/events';
 import { ChatTabs, ChatTabStatusIndicator } from './ChatTabs';
 import { ChatState } from '../../types/chatState';
+
+const mockCreateSession = vi.fn(async (dir?: string, _opts?: unknown) => ({
+  id: 'new-session-123',
+  name: 'New Chat',
+  working_dir: dir || '/default/working/dir',
+}));
+
+vi.mock('../../sessions', () => ({
+  createSession: (dir?: string, opts?: unknown) => mockCreateSession(dir, opts),
+  getSessionDisplayName: vi.fn((session: { name?: string }) => session.name || 'Чат'),
+}));
+
+vi.mock('../../utils/workingDir', () => ({
+  getEffectiveWorkingDir: vi.fn(async (inherited?: string) => inherited || '/default/working/dir'),
+}));
 
 class ResizeObserverMock {
   observe() {}
@@ -165,31 +180,47 @@ describe('ChatTabs', () => {
     expect(addButton.getAttribute('title')).toBe('Новый чат (Ctrl+T)');
   });
 
-  it('navigates to "/" with current session working directory when "+" is clicked on /pair', () => {
+  it('creates a new session and navigates to it when "+" is clicked on /pair', async () => {
     sessionSnapshots.set('chat-1', {
       session: { name: 'chat-1', working_dir: '/test/repo' },
     });
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
     render(<ChatTabs sessionIds={['chat-1', 'chat-2']} />);
     const addButton = screen.getByRole('button', { name: 'Новый чат' });
-    fireEvent.click(addButton);
-    expect(router.navigate).toHaveBeenCalledWith('/', { state: { workingDir: '/test/repo' } });
+    await act(async () => {
+      fireEvent.click(addButton);
+    });
+
+    expect(mockCreateSession).toHaveBeenCalledWith('/test/repo', undefined);
+    expect(router.navigate).toHaveBeenCalledWith('/pair?resumeSessionId=new-session-123');
+
+    const addEvent = dispatchSpy.mock.calls
+      .map(([value]) => value)
+      .find((value) => value instanceof CustomEvent && value.type === AppEvents.ADD_ACTIVE_SESSION);
+    expect(addEvent).toBeInstanceOf(CustomEvent);
+    expect((addEvent as CustomEvent).detail).toEqual({ sessionId: 'new-session-123' });
   });
 
-  it('focuses input without navigating when "+" is clicked while already on "/"', () => {
+  it('creates a new session and navigates to it when "+" is clicked while on "/"', async () => {
     router.pathname = '/';
     router.searchParams = new URLSearchParams('');
-    const input = document.createElement('input');
-    input.type = 'text';
-    const focusSpy = vi.spyOn(input, 'focus');
-    document.body.appendChild(input);
-
     render(<ChatTabs sessionIds={['chat-1']} />);
     const addButton = screen.getByRole('button', { name: 'Новый чат' });
-    fireEvent.click(addButton);
+    await act(async () => {
+      fireEvent.click(addButton);
+    });
 
-    expect(focusSpy).toHaveBeenCalled();
-    expect(router.navigate).not.toHaveBeenCalled();
-    document.body.removeChild(input);
+    expect(mockCreateSession).toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith('/pair?resumeSessionId=new-session-123');
+  });
+
+  it('creates a new session and navigates when "chat:open-new-tab" event is dispatched', async () => {
+    render(<ChatTabs sessionIds={['chat-1']} />);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('chat:open-new-tab'));
+    });
+    expect(mockCreateSession).toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith('/pair?resumeSessionId=new-session-123');
   });
 
   it('renders active "Новый чат" tab on "/" route alongside open sessions', () => {
@@ -223,15 +254,18 @@ describe('ChatTabs', () => {
     router.searchParams = new URLSearchParams('');
     const input = document.createElement('input');
     input.type = 'text';
-    const focusSpy = vi.spyOn(input, 'focus');
     document.body.appendChild(input);
+    const focusSpy = vi.spyOn(input, 'focus');
 
-    render(<ChatTabs sessionIds={['chat-1']} />);
-    const newChatTab = screen.getByText('Новый чат').closest('[data-tab]')!;
-    fireEvent.click(newChatTab);
+    try {
+      render(<ChatTabs sessionIds={['chat-1']} />);
+      const newChatTab = screen.getByText('Новый чат').closest('[data-tab]')!;
+      fireEvent.click(newChatTab);
 
-    expect(focusSpy).toHaveBeenCalled();
-    document.body.removeChild(input);
+      expect(focusSpy).toHaveBeenCalled();
+    } finally {
+      document.body.removeChild(input);
+    }
   });
 
   it('navigates to the last session on middle click (auxClick) on "Новый чат" tab', () => {

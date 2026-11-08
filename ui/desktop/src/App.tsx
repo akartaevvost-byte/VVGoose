@@ -564,6 +564,13 @@ export function AppInner() {
         }
       }
 
+      // New chat tab shortcut: Cmd/Ctrl + T
+      if (modKey && !event.shiftKey && !event.altKey && (event.key === 't' || event.key === 'T')) {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent('chat:open-new-tab'));
+        return;
+      }
+
       // Close active tab shortcut: Cmd/Ctrl + W
       if (modKey && !event.shiftKey && !event.altKey && (event.key === 'w' || event.key === 'W')) {
         const currentId = getActiveSessionId();

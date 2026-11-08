@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Loader2, MessageSquare, Plus, ShieldAlert, X } from 'lucide-react';
 import { AppEvents } from '../../constants/events';
@@ -9,7 +9,8 @@ import {
   useAcpChatSessionSnapshot,
 } from '../../acp/chatSessionStore';
 import { ChatState } from '../../types/chatState';
-import { getSessionDisplayName } from '../../sessions';
+import { createSession, getSessionDisplayName } from '../../sessions';
+import { getEffectiveWorkingDir } from '../../utils/workingDir';
 import { TabStrip } from './TabStrip';
 import { cn } from '../../utils';
 
@@ -150,22 +151,45 @@ export const ChatTabs: React.FC<ChatTabsProps> = ({ sessionIds }) => {
     return null;
   }
 
-  const focusInputField = () => {
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+
+  const focusInputField = useCallback(() => {
     const inputField = document.querySelector('input[type="text"], textarea') as HTMLElement | null;
     inputField?.focus();
-  };
+  }, []);
 
   const currentSessionWorkingDir = currentSessionId
     ? acpChatSessionStore.getSnapshot(currentSessionId)?.session?.working_dir
     : undefined;
 
-  const handleOpenNewChat = () => {
-    if (isOnHubRoute) {
-      focusInputField();
-      return;
+  const handleOpenNewChat = useCallback(async () => {
+    if (isCreatingSession) return;
+    setIsCreatingSession(true);
+    try {
+      const workingDir = await getEffectiveWorkingDir(currentSessionWorkingDir);
+      const session = await createSession(workingDir);
+      window.dispatchEvent(new CustomEvent(AppEvents.SESSION_CREATED, { detail: { session } }));
+      window.dispatchEvent(
+        new CustomEvent(AppEvents.ADD_ACTIVE_SESSION, {
+          detail: { sessionId: session.id },
+        })
+      );
+      navigate(pairSessionPath(session.id));
+    } catch (error) {
+      console.error('Failed to create new chat session:', error);
+      navigate('/', { state: { workingDir: currentSessionWorkingDir } });
+    } finally {
+      setIsCreatingSession(false);
     }
-    navigate('/', { state: { workingDir: currentSessionWorkingDir } });
-  };
+  }, [currentSessionWorkingDir, isCreatingSession, navigate]);
+
+  useEffect(() => {
+    const onOpenNewTab = () => {
+      void handleOpenNewChat();
+    };
+    window.addEventListener('chat:open-new-tab', onOpenNewTab);
+    return () => window.removeEventListener('chat:open-new-tab', onOpenNewTab);
+  }, [handleOpenNewChat]);
 
   const isMac = getIsMac();
 
@@ -275,12 +299,17 @@ export const ChatTabs: React.FC<ChatTabsProps> = ({ sessionIds }) => {
       )}
       <button
         type="button"
+        disabled={isCreatingSession}
         onClick={handleOpenNewChat}
-        className="no-drag h-6 w-6 flex shrink-0 items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60 transition-colors cursor-pointer"
+        className="no-drag h-6 w-6 flex shrink-0 items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60 transition-colors cursor-pointer disabled:opacity-50"
         title={isMac ? 'Новый чат (⌘T)' : 'Новый чат (Ctrl+T)'}
         aria-label="Новый чат"
       >
-        <Plus className="w-3.5 h-3.5 pointer-events-none" />
+        {isCreatingSession ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin pointer-events-none" />
+        ) : (
+          <Plus className="w-3.5 h-3.5 pointer-events-none" />
+        )}
       </button>
     </TabStrip>
   );
