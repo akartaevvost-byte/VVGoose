@@ -1,7 +1,15 @@
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk';
 import type { Permission } from '../types/permissions';
-import { acpChatSessionActions, acpPermissionUserInputRequestId } from './chatSessionStore';
+import {
+  acpChatSessionActions,
+  acpChatSessionStore,
+  acpPermissionUserInputRequestId,
+  getActiveSessionId,
+  navigateToSession,
+} from './chatSessionStore';
 import type { AcpPermissionRequest } from './permissionRequestTypes';
+import { getSessionDisplayName } from '../sessions';
+import { toastAction } from '../toasts';
 
 interface PendingPermissionRequest {
   request: RequestPermissionRequest;
@@ -18,6 +26,25 @@ export async function requestAcpPermission(
   const previous = pendingRequests.get(key);
   if (previous) {
     previous.resolve(cancelledPermissionResponse());
+  }
+
+  const currentActiveId = getActiveSessionId();
+  if (currentActiveId && currentActiveId !== request.sessionId) {
+    const snapshot = acpChatSessionStore.getSnapshot(request.sessionId);
+    const sessionName = snapshot?.session ? getSessionDisplayName(snapshot.session).trim() : 'Чат';
+    const toolCallAny = request.toolCall as unknown as {
+      title?: string;
+      name?: string;
+      toolCallId: string;
+    };
+    const toolName = toolCallAny.title || toolCallAny.name || toolCallAny.toolCallId;
+
+    toastAction({
+      title: 'Требуется подтверждение действия',
+      msg: `Вкладка «${sessionName}» запрашивает вызов инструмента ${toolName}`,
+      actionLabel: 'Перейти в чат',
+      onAction: () => navigateToSession(request.sessionId),
+    });
   }
 
   return new Promise<RequestPermissionResponse>((resolve) => {

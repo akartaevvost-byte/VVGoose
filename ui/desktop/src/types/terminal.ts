@@ -35,4 +35,6 @@ export interface TerminalContextType {
   runCommand: (command: string, autoExecute?: boolean) => void;
   registerClearHandler: (id: string, handler: () => void) => () => void;
   updateSessionExitCode: (id: string, exitCode: number) => void;
+  terminalFontSize?: number;
+  setTerminalFontSize?: (size: number | ((prev: number) => number)) => void;
 }

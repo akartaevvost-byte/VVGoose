@@ -16,7 +16,19 @@ import TelemetryConsentPrompt from './components/TelemetryConsentPrompt';
 import OnboardingGuard from './components/onboarding/OnboardingGuard';
 import { createSession } from './sessions';
 import { acpListSessions, acpDeleteSession } from './acp/sessions';
-import { acpChatSessionStore } from './acp/chatSessionStore';
+import {
+  acpChatSessionActions,
+  acpChatSessionStore,
+  getActiveSessionId,
+  pairSessionPath,
+  setActiveSessionId,
+  setGlobalNavigate,
+} from './acp/chatSessionStore';
+import { acpChatSessionController } from './acp/chatSessionController';
+import { cancelAcpPermissionRequestsForSession } from './acp/permissionRequests';
+import { cancelAcpElicitationRequestsForSession } from './acp/elicitationRequests';
+import { ChatState } from './types/chatState';
+import { toastWarning } from './toasts';
 
 import { ChatType } from './types/chat';
 import Hub from './components/Hub';
@@ -369,6 +381,22 @@ export function AppInner() {
     Array<{ sessionId: string; initialMessage?: UserInput; noAutoSubmit?: boolean }>
   >([]);
 
+  const activeSessionsRef = useRef(activeSessions);
+  activeSessionsRef.current = activeSessions;
+
+  useEffect(() => {
+    setGlobalNavigate(navigate);
+    return () => setGlobalNavigate(null);
+  }, [navigate]);
+
+  useEffect(() => {
+    const currentSessionId =
+      location.pathname === '/pair'
+        ? new URLSearchParams(location.search).get('resumeSessionId')
+        : null;
+    setActiveSessionId(currentSessionId);
+  }, [location.pathname, location.search]);
+
   useEffect(() => {
     const handleAddActiveSession = (event: Event) => {
       const { sessionId, initialMessage, noAutoSubmit } = (
@@ -392,7 +420,31 @@ export function AppInner() {
         const newSession = { sessionId, initialMessage, noAutoSubmit };
         const updated = [...prev, newSession];
         if (updated.length > MAX_ACTIVE_SESSIONS) {
-          return updated.slice(updated.length - MAX_ACTIVE_SESSIONS);
+          // Find first candidate for eviction that is NOT actively running
+          const evictIndex = updated.findIndex((item) => {
+            if (item.sessionId === sessionId) return false;
+            const snap = acpChatSessionStore.getSnapshot(item.sessionId);
+            return (
+              !snap ||
+              (!snap.isProcessing &&
+                !snap.isWaitingForInput &&
+                !snap.hasPendingUserInput &&
+                !snap.activePromptAttemptId &&
+                snap.chatState === ChatState.Idle)
+            );
+          });
+
+          if (evictIndex !== -1) {
+            const [evicted] = updated.splice(evictIndex, 1);
+            cancelAcpPermissionRequestsForSession(evicted.sessionId);
+            cancelAcpElicitationRequestsForSession(evicted.sessionId);
+            acpChatSessionActions.deleteSnapshot(evicted.sessionId);
+          } else {
+            toastWarning({
+              title: 'Достигнут лимит активных сессий',
+              msg: 'Все открытые вкладки выполняют задачи. Дождитесь завершения одной из них.',
+            });
+          }
         }
         return updated;
       });
@@ -413,6 +465,13 @@ export function AppInner() {
 
     const handleSessionDeleted = (event: Event) => {
       const { sessionId } = (event as CustomEvent<{ sessionId: string }>).detail;
+      const snap = acpChatSessionStore.getSnapshot(sessionId);
+      if (snap?.activePromptAttemptId) {
+        acpChatSessionController.stop(sessionId);
+      }
+      cancelAcpPermissionRequestsForSession(sessionId);
+      cancelAcpElicitationRequestsForSession(sessionId);
+      acpChatSessionActions.deleteSnapshot(sessionId);
 
       setActiveSessions((prev) => {
         return prev.filter((session) => session.sessionId !== sessionId);
@@ -421,6 +480,14 @@ export function AppInner() {
 
     const handleChatTabClosed = (event: Event) => {
       const { sessionId } = (event as CustomEvent<{ sessionId: string }>).detail;
+      const snap = acpChatSessionStore.getSnapshot(sessionId);
+      if (snap?.activePromptAttemptId) {
+        acpChatSessionController.stop(sessionId);
+      }
+      cancelAcpPermissionRequestsForSession(sessionId);
+      cancelAcpElicitationRequestsForSession(sessionId);
+      acpChatSessionActions.deleteSnapshot(sessionId);
+
       setActiveSessions((prev) => prev.filter((session) => session.sessionId !== sessionId));
     };
 
@@ -468,14 +535,86 @@ export function AppInner() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const isMac = window.electron.platform === 'darwin';
-      if ((isMac ? event.metaKey : event.ctrlKey) && event.key === 'n') {
+      const isMac =
+        typeof window !== 'undefined' &&
+        (window.electron?.platform === 'darwin' ||
+          (typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)));
+      const modKey = isMac ? event.metaKey : event.ctrlKey;
+
+      if (modKey && event.key === 'n') {
         event.preventDefault();
         try {
           window.electron.createChatWindow({ dir: getInitialWorkingDir() });
         } catch (error) {
           console.error('Error creating new window:', error);
         }
+        return;
+      }
+
+      // Tab switching shortcuts: Cmd/Ctrl + 1..9
+      if (modKey && !event.shiftKey && !event.altKey) {
+        const num = parseInt(event.key, 10);
+        if (!isNaN(num) && num >= 1 && num <= 9) {
+          const targetIndex = num - 1;
+          if (targetIndex < activeSessionsRef.current.length) {
+            event.preventDefault();
+            navigate(pairSessionPath(activeSessionsRef.current[targetIndex].sessionId));
+            return;
+          }
+        }
+      }
+
+      // Close active tab shortcut: Cmd/Ctrl + W
+      if (modKey && !event.shiftKey && !event.altKey && (event.key === 'w' || event.key === 'W')) {
+        const currentId = getActiveSessionId();
+        if (currentId && activeSessionsRef.current.length > 0) {
+          event.preventDefault();
+          const currentIndex = activeSessionsRef.current.findIndex(
+            (s) => s.sessionId === currentId
+          );
+          if (currentIndex !== -1) {
+            const remaining = activeSessionsRef.current.filter((s) => s.sessionId !== currentId);
+            const nextId =
+              remaining.length > 0
+                ? remaining[Math.min(currentIndex, remaining.length - 1)].sessionId
+                : null;
+            navigate(nextId ? pairSessionPath(nextId) : '/');
+            window.dispatchEvent(
+              new CustomEvent(AppEvents.CHAT_TAB_CLOSED, { detail: { sessionId: currentId } })
+            );
+            return;
+          }
+        }
+      }
+
+      // Next / previous tab shortcuts: Cmd/Ctrl + Shift + [ / ] or Cmd/Ctrl + Option + ArrowLeft / ArrowRight
+      const isPrevTab =
+        (modKey && event.shiftKey && (event.key === '[' || event.key === '{')) ||
+        (modKey && event.altKey && event.key === 'ArrowLeft');
+      const isNextTab =
+        (modKey && event.shiftKey && (event.key === ']' || event.key === '}')) ||
+        (modKey && event.altKey && event.key === 'ArrowRight');
+
+      if (isPrevTab && activeSessionsRef.current.length > 1) {
+        event.preventDefault();
+        const currentId = getActiveSessionId();
+        const currentIndex = activeSessionsRef.current.findIndex((s) => s.sessionId === currentId);
+        const prevIndex =
+          currentIndex > 0 ? currentIndex - 1 : activeSessionsRef.current.length - 1;
+        navigate(pairSessionPath(activeSessionsRef.current[prevIndex].sessionId));
+        return;
+      }
+
+      if (isNextTab && activeSessionsRef.current.length > 1) {
+        event.preventDefault();
+        const currentId = getActiveSessionId();
+        const currentIndex = activeSessionsRef.current.findIndex((s) => s.sessionId === currentId);
+        const nextIndex =
+          currentIndex !== -1 && currentIndex < activeSessionsRef.current.length - 1
+            ? currentIndex + 1
+            : 0;
+        navigate(pairSessionPath(activeSessionsRef.current[nextIndex].sessionId));
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);

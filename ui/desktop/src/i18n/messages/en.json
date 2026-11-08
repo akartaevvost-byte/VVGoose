@@ -38,6 +38,9 @@
   "appLayout.toggleExplorer": {
     "defaultMessage": "Toggle File Explorer"
   },
+  "appLayout.toggleTerminal": {
+    "defaultMessage": "Toggle terminal"
+  },
   "appsView.customApp": {
     "defaultMessage": "Custom app"
   },
@@ -4770,7 +4773,7 @@
     "defaultMessage": "High"
   },
   "thinkingEffortButton.labelThinking": {
-    "defaultMessage": "Thinking: {level}"
+    "defaultMessage": "Effort: {level}"
   },
   "thinkingEffortButton.lowDesc": {
     "defaultMessage": "Minimal thinking, light reasoning"
@@ -4803,7 +4806,7 @@
     "defaultMessage": "Thinking Effort"
   },
   "thinkingEffortButton.tooltip": {
-    "defaultMessage": "Thinking effort: {level} (⌥T to cycle)"
+    "defaultMessage": "Effort: {level} (⌥T to cycle)"
   },
   "toolApprovalButtons.allowOnce": {
     "defaultMessage": "Allow Once"

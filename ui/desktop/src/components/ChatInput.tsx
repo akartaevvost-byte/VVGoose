@@ -73,10 +73,7 @@ interface PastedImage {
   error?: string;
 }
 
-type ChatInputLiveVoice = Pick<
-  LiveVoiceController,
-  'phase' | 'muted' | 'stop' | 'toggleMute'
-> & {
+type ChatInputLiveVoice = Pick<LiveVoiceController, 'phase' | 'muted' | 'stop' | 'toggleMute'> & {
   availability: LiveVoiceAvailabilityResponse_unstable | null;
   activeInAnotherSession: boolean;
   start: () => Promise<void>;
@@ -203,6 +200,7 @@ interface ChatInputProps {
   liveVoice?: ChatInputLiveVoice;
   appendQuote?: string | null;
   onAppendQuoteConsumed?: () => void;
+  isActiveSession?: boolean;
 }
 
 export default function ChatInput({
@@ -243,6 +241,7 @@ export default function ChatInput({
   liveVoice,
   appendQuote,
   onAppendQuoteConsumed,
+  isActiveSession = true,
 }: ChatInputProps) {
   const [_value, setValue] = useState(initialValue);
   const [displayValue, setDisplayValue] = useState(initialValue); // For immediate visual feedback
@@ -616,14 +615,20 @@ export default function ChatInput({
   };
 
   useEffect(() => {
-    if (textAreaRef.current) {
+    if (isActiveSession && textAreaRef.current) {
       textAreaRef.current.focus();
     }
-  }, [textAreaRef]);
+  }, [isActiveSession, textAreaRef]);
 
   useEffect(() => {
     const handleAttach = (event: Event) => {
-      const customEvent = event as CustomEvent<{ path: string; name: string }>;
+      const customEvent = event as CustomEvent<{ path: string; name: string; sessionId?: string }>;
+      const targetSessionId = customEvent.detail?.sessionId;
+      if (targetSessionId) {
+        if (targetSessionId !== sessionId) return;
+      } else if (!isActiveSession) {
+        return;
+      }
       if (customEvent.detail?.path) {
         const { path: filePath, name } = customEvent.detail;
         const newDroppedFile: DroppedFile = {
@@ -643,9 +648,9 @@ export default function ChatInput({
 
     window.addEventListener(AppEvents.ATTACH_FILE_TO_CHAT, handleAttach);
     return () => window.removeEventListener(AppEvents.ATTACH_FILE_TO_CHAT, handleAttach);
-  }, [setLocalDroppedFiles]);
+  }, [isActiveSession, sessionId, setLocalDroppedFiles]);
 
-  useFocusOnTyping(textAreaRef, !isRecording);
+  useFocusOnTyping(textAreaRef, isActiveSession && !isRecording);
 
   // Load providers and get current model's token limit
   const loadProviderDetails = async () => {
@@ -1695,10 +1700,7 @@ export default function ChatInput({
       {/* Bottom action bar. Two rows:
           Row 1: model selector, thinking effort, working directory, git branch (full width).
           Row 2: tools on the left, send/stop button on the right (positioned lower and further right). */}
-      <div
-        ref={bottomBarRef}
-        className="flex flex-col gap-1.5 pl-3 pr-1 pt-2 pb-0.5 relative"
-      >
+      <div ref={bottomBarRef} className="flex flex-col gap-1.5 pl-3 pr-1 pt-2 pb-0.5 relative">
         {/* Row 1: model selector, thinking effort, working directory, git branch */}
         <div className="flex flex-row items-center gap-2 flex-wrap">
           <Tooltip>

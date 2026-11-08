@@ -30,7 +30,7 @@ const messages = defineMessages({
   },
   labelThinking: {
     id: 'thinkingEffortButton.labelThinking',
-    defaultMessage: 'Thinking: {level}',
+    defaultMessage: 'Effort: {level}',
   },
   offLabel: {
     id: 'thinkingEffortButton.offLabel',
@@ -74,7 +74,7 @@ const messages = defineMessages({
   },
   tooltip: {
     id: 'thinkingEffortButton.tooltip',
-    defaultMessage: 'Thinking effort: {level} (⌥T to cycle)',
+    defaultMessage: 'Effort: {level} (⌥T to cycle)',
   },
 });
 
@@ -312,17 +312,12 @@ export default function ThinkingEffortButton({
 
   const effortStyles = useMemo(() => getEffortStyles(currentEffort), [currentEffort]);
 
-  const activeLevelLabel = useMemo(() => {
-    const option = EFFORT_OPTIONS.find((o) => o.value === currentEffort);
-    return option ? intl.formatMessage(messages[option.labelKey]) : currentEffort;
-  }, [currentEffort, intl]);
-
   const triggerLabel = useMemo(() => {
     if (isNarrow) {
-      return activeLevelLabel;
+      return currentEffort;
     }
-    return intl.formatMessage(messages.labelThinking, { level: activeLevelLabel });
-  }, [isNarrow, activeLevelLabel, intl]);
+    return intl.formatMessage(messages.labelThinking, { level: currentEffort });
+  }, [isNarrow, currentEffort, intl]);
 
   if (!supportsReasoning) {
     return null;
@@ -342,7 +337,7 @@ export default function ThinkingEffortButton({
               type="button"
               data-testid="thinking-effort-button"
               data-effort={currentEffort}
-              aria-label={intl.formatMessage(messages.tooltip, { level: activeLevelLabel })}
+              aria-label={intl.formatMessage(messages.tooltip, { level: currentEffort })}
               className={cn(
                 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs transition-colors hover:cursor-pointer select-none border shrink-0',
                 effortStyles.buttonClass,
@@ -421,7 +416,7 @@ export default function ThinkingEffortButton({
         </DropdownMenuContent>
       </DropdownMenu>
       <TooltipContent side="top">
-        {intl.formatMessage(messages.tooltip, { level: activeLevelLabel })}
+        {intl.formatMessage(messages.tooltip, { level: currentEffort })}
       </TooltipContent>
     </Tooltip>
   );

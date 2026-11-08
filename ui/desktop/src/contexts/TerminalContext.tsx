@@ -14,8 +14,12 @@ import type { TerminalContextType, TerminalSession } from '../types/terminal';
 
 const TERMINAL_VISIBLE_KEY = 'terminal_visible';
 const TERMINAL_HEIGHT_KEY = 'terminal_height';
+const TERMINAL_FONT_SIZE_KEY = 'terminal_font_size';
 export const DEFAULT_TERMINAL_HEIGHT = 260;
 export const MIN_TERMINAL_HEIGHT = 120;
+export const DEFAULT_TERMINAL_FONT_SIZE = 12;
+export const MIN_TERMINAL_FONT_SIZE = 10;
+export const MAX_TERMINAL_FONT_SIZE = 20;
 
 const TerminalContext = createContext<TerminalContextType | undefined>(undefined);
 
@@ -86,6 +90,35 @@ export const TerminalProvider: React.FC<TerminalProviderProps> = ({ children }) 
     },
     []
   );
+
+  const [terminalFontSize, setTerminalFontSizeState] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(TERMINAL_FONT_SIZE_KEY);
+      const parsed = saved ? parseInt(saved, 10) : DEFAULT_TERMINAL_FONT_SIZE;
+      return Number.isFinite(parsed) &&
+        parsed >= MIN_TERMINAL_FONT_SIZE &&
+        parsed <= MAX_TERMINAL_FONT_SIZE
+        ? parsed
+        : DEFAULT_TERMINAL_FONT_SIZE;
+    } catch {
+      return DEFAULT_TERMINAL_FONT_SIZE;
+    }
+  });
+
+  const setTerminalFontSize = useCallback((value: number | ((prev: number) => number)) => {
+    setTerminalFontSizeState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      const clamped = Number.isFinite(next)
+        ? Math.max(MIN_TERMINAL_FONT_SIZE, Math.min(next, MAX_TERMINAL_FONT_SIZE))
+        : DEFAULT_TERMINAL_FONT_SIZE;
+      try {
+        localStorage.setItem(TERMINAL_FONT_SIZE_KEY, clamped.toString());
+      } catch {
+        // Ignore storage errors
+      }
+      return clamped;
+    });
+  }, []);
 
   const createTerminal = useCallback(
     (cwd?: string): string => {
@@ -274,6 +307,8 @@ export const TerminalProvider: React.FC<TerminalProviderProps> = ({ children }) 
     runCommand,
     registerClearHandler,
     updateSessionExitCode,
+    terminalFontSize,
+    setTerminalFontSize,
   };
 
   return <TerminalContext.Provider value={value}>{children}</TerminalContext.Provider>;

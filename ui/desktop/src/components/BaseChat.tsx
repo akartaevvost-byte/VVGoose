@@ -126,14 +126,20 @@ export default function BaseChat({
 
   useEffect(() => {
     const handleAppendToChat = (e: Event) => {
-      const customEvent = e as CustomEvent<{ text: string }>;
+      const customEvent = e as CustomEvent<{ text: string; sessionId?: string }>;
+      const targetSessionId = customEvent.detail?.sessionId;
+      if (targetSessionId) {
+        if (targetSessionId !== sessionId) return;
+      } else if (!isActiveSession) {
+        return;
+      }
       if (customEvent.detail?.text) {
         setPendingQuote(customEvent.detail.text);
       }
     };
     window.addEventListener('goose:append-to-chat', handleAppendToChat);
     return () => window.removeEventListener('goose:append-to-chat', handleAppendToChat);
-  }, []);
+  }, [isActiveSession, sessionId]);
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -400,7 +406,14 @@ export default function BaseChat({
 
   // Listen for global scroll-to-bottom requests (e.g., from MCP App message actions)
   useEffect(() => {
-    const handleGlobalScrollRequest = () => {
+    const handleGlobalScrollRequest = (event?: Event) => {
+      const targetSessionId = (event as CustomEvent<{ sessionId?: string }>)?.detail?.sessionId;
+      if (targetSessionId && targetSessionId !== sessionId) {
+        return;
+      }
+      if (!isActiveSession && !targetSessionId) {
+        return;
+      }
       // Add a small delay to ensure content has been rendered
       setTimeout(() => {
         if (scrollRef.current?.scrollToBottom) {
@@ -412,7 +425,15 @@ export default function BaseChat({
     window.addEventListener(AppEvents.SCROLL_CHAT_TO_BOTTOM, handleGlobalScrollRequest);
     return () =>
       window.removeEventListener(AppEvents.SCROLL_CHAT_TO_BOTTOM, handleGlobalScrollRequest);
-  }, []);
+  }, [isActiveSession, sessionId]);
+
+  useEffect(() => {
+    if (isActiveSession) {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToBottom();
+      });
+    }
+  }, [isActiveSession]);
 
   useEffect(() => {
     if (
@@ -631,6 +652,7 @@ export default function BaseChat({
             <ChatInput
               inputRef={chatInputRef}
               sessionId={sessionId}
+              isActiveSession={isActiveSession}
               handleSubmit={chatInputSubmit}
               chatState={chatState}
               hasActiveRun={hasActiveRun}

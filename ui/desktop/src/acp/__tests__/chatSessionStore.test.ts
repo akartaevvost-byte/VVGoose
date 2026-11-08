@@ -695,6 +695,54 @@ describe('acpChatSessionStore', () => {
       },
     });
   });
+
+  it('tracks execution state status and flags for idle, streaming, waiting_for_input, error and completed', () => {
+    const sessId = 'concurrent-sess-1';
+    acpChatSessionActions.finishSessionLoad(sessId, session(sessId));
+    let snap = acpChatSessionStore.getSnapshot(sessId)!;
+    expect(snap.status).toBe('idle');
+    expect(snap.isProcessing).toBe(false);
+    expect(snap.isWaitingForInput).toBe(false);
+    expect(snap.hasError).toBe(false);
+
+    acpChatSessionActions.startPromptAttempt(sessId, 'prompt-1');
+    snap = acpChatSessionStore.getSnapshot(sessId)!;
+    expect(snap.status).toBe('streaming');
+    expect(snap.isProcessing).toBe(true);
+    expect(snap.isWaitingForInput).toBe(false);
+
+    acpChatSessionActions.applyPermissionRequest(permissionRequest(sessId, 'tool-1'));
+    snap = acpChatSessionStore.getSnapshot(sessId)!;
+    expect(snap.status).toBe('waiting_for_input');
+    expect(snap.isWaitingForInput).toBe(true);
+    expect(snap.hasPendingUserInput).toBe(true);
+
+    acpChatSessionActions.resolveUserInputRequest(
+      sessId,
+      acpPermissionUserInputRequestId('tool-1')
+    );
+    snap = acpChatSessionStore.getSnapshot(sessId)!;
+    expect(snap.status).toBe('streaming');
+    expect(snap.isProcessing).toBe(true);
+
+    acpChatSessionActions.finishPromptAttemptIfCurrent(sessId, 'prompt-1');
+    snap = acpChatSessionStore.getSnapshot(sessId)!;
+    expect(snap.status).toBe('completed');
+    expect(snap.unreadCompleted).toBe(true);
+    expect(snap.isProcessing).toBe(false);
+
+    acpChatSessionActions.markSessionRead(sessId);
+    snap = acpChatSessionStore.getSnapshot(sessId)!;
+    expect(snap.status).toBe('idle');
+    expect(snap.unreadCompleted).toBe(false);
+
+    acpChatSessionActions.setSessionLoadError(sessId, 'Failed to connect');
+    snap = acpChatSessionStore.getSnapshot(sessId)!;
+    expect(snap.status).toBe('error');
+    expect(snap.hasError).toBe(true);
+
+    acpChatSessionActions.deleteSnapshot(sessId);
+  });
 });
 
 describe('useAcpChatSessionSnapshot', () => {

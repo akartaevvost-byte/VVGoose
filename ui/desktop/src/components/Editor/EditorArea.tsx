@@ -115,7 +115,6 @@ export function relativeToWorkspacePath(
 export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
   let resolvedTheme: 'light' | 'dark' = 'dark';
   try {
-     
     const themeCtx = useTheme();
     resolvedTheme = themeCtx.resolvedTheme;
   } catch {
@@ -160,7 +159,9 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
         const activeEl = document.activeElement;
         const focusInEditor =
-          !activeEl || activeEl === document.body || editorRootRef.current?.contains(activeEl) === true;
+          !activeEl ||
+          activeEl === document.body ||
+          editorRootRef.current?.contains(activeEl) === true;
         if (focusInEditor && activeFile) {
           e.preventDefault();
           closeFile(activeFile.path);
@@ -235,10 +236,22 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
         rejectPendingDiff();
       };
 
-      modifiedEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter, acceptCmd);
-      modifiedEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Backspace, rejectCmd);
-      originalEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter, acceptCmd);
-      originalEditor?.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Backspace, rejectCmd);
+      modifiedEditor?.addCommand(
+        monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter,
+        acceptCmd
+      );
+      modifiedEditor?.addCommand(
+        monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Backspace,
+        rejectCmd
+      );
+      originalEditor?.addCommand(
+        monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Enter,
+        acceptCmd
+      );
+      originalEditor?.addCommand(
+        monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.Backspace,
+        rejectCmd
+      );
     },
     [acceptPendingDiff, rejectPendingDiff, monacoTheme]
   );
@@ -310,7 +323,11 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
 
       {/* Editor or Diff Content */}
       <div
-        className={cn('flex-1 min-h-0 relative overflow-hidden', isDark ? 'bg-[#1c1d22]' : 'bg-white')}
+        className={cn(
+          'flex-1 min-h-0 relative overflow-hidden @container/editor',
+          isDark ? 'bg-[#1c1d22]' : 'bg-white'
+        )}
+        style={{ containerType: 'size', containerName: 'editor' }}
       >
         {isCurrentFileDiff && pendingDiff ? (
           <DiffEditor

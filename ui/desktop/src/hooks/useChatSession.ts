@@ -21,6 +21,7 @@ import { acpChatSessionController, type PromptOutcome } from '../acp/chatSession
 import {
   acpChatSessionActions,
   acpChatSessionStore,
+  getActiveSessionId,
   useAcpChatSessionSnapshot,
 } from '../acp/chatSessionStore';
 import { acpSteerSession } from '../acp/prompt';
@@ -120,7 +121,8 @@ export function useChatSession({
             window.electron.getSetting('enableNotifications'),
             window.electron.isAnyWindowFocused(),
           ]);
-          if (notificationsEnabled === true && !anyWindowFocused) {
+          const isBackgroundSession = getActiveSessionId() !== sessionId;
+          if (notificationsEnabled === true && (!anyWindowFocused || isBackgroundSession)) {
             window.electron.showNotification({
               title: intl.formatMessage(i18n.notificationTitle),
               body: intl.formatMessage(i18n.notificationBody),

@@ -222,6 +222,27 @@ describe('AppLayout 3-panel layout', () => {
     expect(screen.getByTitle('Toggle File Explorer (⌘⇧E)')).toBeDefined();
   });
 
+  it('renders ChatTabs with "Новый чат" tab and "+" button on root route ("/")', () => {
+    renderWithProviders('/');
+
+    expect(screen.getByRole('button', { name: 'Новый чат' })).toBeDefined();
+    expect(screen.getByText('Новый чат')).toBeDefined();
+  });
+
+  it('renders ChatTabs with "+" button in pair route', () => {
+    render(
+      <IntlProvider locale="en" defaultLocale="en" messages={{}}>
+        <MemoryRouter initialEntries={['/pair?resumeSessionId=session-1']}>
+          <ChatProvider chat={mockChat} setChat={vi.fn()} contextKey="test">
+            <AppLayout activeSessions={[{ sessionId: 'session-1' }]} liveVoice={mockLiveVoice} />
+          </ChatProvider>
+        </MemoryRouter>
+      </IntlProvider>
+    );
+
+    expect(screen.getByRole('button', { name: 'Новый чат' })).toBeDefined();
+  });
+
   it('toggles chat panel visibility using the message button in header', () => {
     renderWithProviders('/pair');
 

@@ -4878,45 +4878,45 @@
     "defaultMessage": "Превышен порог автокомпактизации: разговор будет сжат перед отправкой следующего запроса."
   },
   "thinkingEffortButton.highDesc": {
-    "defaultMessage": "Глубокие рассуждения для сложных инженерных задач"
+    "defaultMessage": "Deep reasoning for complex problems"
   },
   "thinkingEffortButton.highLabel": {
-    "defaultMessage": "Высокий"
+    "defaultMessage": "High"
   },
   "thinkingEffortButton.labelThinking": {
-    "defaultMessage": "Мышление: {level}"
+    "defaultMessage": "Effort: {level}"
   },
   "thinkingEffortButton.lowDesc": {
-    "defaultMessage": "Минимальные размышления, самый быстрый ответ"
+    "defaultMessage": "Minimal thinking, light reasoning"
   },
   "thinkingEffortButton.lowLabel": {
-    "defaultMessage": "Низкий"
+    "defaultMessage": "Low"
   },
   "thinkingEffortButton.maxDesc": {
-    "defaultMessage": "Максимальная глубина рассуждений без ограничений"
+    "defaultMessage": "Maximum depth without reasoning constraints"
   },
   "thinkingEffortButton.maxLabel": {
-    "defaultMessage": "Максимальный"
+    "defaultMessage": "Max"
   },
   "thinkingEffortButton.mediumDesc": {
-    "defaultMessage": "Умеренные размышления для сбалансированных задач"
+    "defaultMessage": "Moderate thinking for balanced reasoning"
   },
   "thinkingEffortButton.mediumLabel": {
-    "defaultMessage": "Средний"
+    "defaultMessage": "Medium"
   },
   "thinkingEffortButton.offDesc": {
-    "defaultMessage": "Без расширенных размышлений"
+    "defaultMessage": "No extended thinking, fastest responses"
   },
   "thinkingEffortButton.offLabel": {
-    "defaultMessage": "Выключено"
+    "defaultMessage": "Off"
   },
   "thinkingEffortButton.subtitle": {
-    "defaultMessage": "Управление глубиной рассуждений модели перед ответом"
+    "defaultMessage": "Control reasoning depth before responding"
   },
   "thinkingEffortButton.title": {
-    "defaultMessage": "Глубина размышлений"
+    "defaultMessage": "Thinking Effort"
   },
   "thinkingEffortButton.tooltip": {
-    "defaultMessage": "Глубина размышлений: {level} (⌥T для переключения)"
+    "defaultMessage": "Effort: {level} (⌥T to cycle)"
   }
 }

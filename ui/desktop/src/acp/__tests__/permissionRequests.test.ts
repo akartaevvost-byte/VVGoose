@@ -5,7 +5,12 @@ import {
   requestAcpPermission,
   resolveAcpPermissionRequest,
 } from '../permissionRequests';
-import { acpChatSessionActions } from '../chatSessionStore';
+import { acpChatSessionActions, getActiveSessionId, navigateToSession } from '../chatSessionStore';
+import { toastAction } from '../../toasts';
+
+vi.mock('../../toasts', () => ({
+  toastAction: vi.fn(),
+}));
 
 vi.mock('../chatSessionStore', () => ({
   acpPermissionUserInputRequestId: (toolCallId: string) => `permission:${toolCallId}`,
@@ -14,6 +19,14 @@ vi.mock('../chatSessionStore', () => ({
     cancelPermissionRequest: vi.fn(),
     resolveUserInputRequest: vi.fn(),
   },
+  acpChatSessionStore: {
+    getSnapshot: vi.fn(() => ({
+      session: { name: 'Фоновый чат', user_set_name: true },
+    })),
+  },
+  getActiveSessionId: vi.fn(() => null),
+  navigateToSession: vi.fn(),
+  pairSessionPath: (id: string) => `/pair?resumeSessionId=${id}`,
 }));
 
 function permissionRequest(sessionId: string, toolCallId: string): RequestPermissionRequest {
@@ -176,5 +189,38 @@ describe('ACP permission requests', () => {
       true
     );
     await expect(secondResponse).resolves.toMatchObject({ outcome: { outcome: 'selected' } });
+  });
+
+  it('triggers in-app toast notification when a background session requests permission', async () => {
+    vi.mocked(toastAction).mockClear();
+    vi.mocked(navigateToSession).mockClear();
+    vi.mocked(getActiveSessionId).mockReturnValue('session-active');
+    const response = requestAcpPermission(permissionRequest('session-background', 'tool-bg'));
+
+    expect(toastAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Требуется подтверждение действия',
+        msg: expect.stringContaining('Read file'),
+        actionLabel: 'Перейти в чат',
+        onAction: expect.any(Function),
+      })
+    );
+
+    const callArgs = vi.mocked(toastAction).mock.calls[0][0];
+    callArgs.onAction();
+    expect(navigateToSession).toHaveBeenCalledWith('session-background');
+
+    cancelAcpPermissionRequestsForSession('session-background');
+    await expect(response).resolves.toMatchObject({ outcome: { outcome: 'cancelled' } });
+  });
+
+  it('does not trigger toast notification when the active session requests permission', async () => {
+    vi.mocked(toastAction).mockClear();
+    vi.mocked(getActiveSessionId).mockReturnValue('session-1');
+    const response = requestAcpPermission(permissionRequest('session-1', 'tool-fg'));
+
+    expect(toastAction).not.toHaveBeenCalled();
+    cancelAcpPermissionRequestsForSession('session-1');
+    await expect(response).resolves.toMatchObject({ outcome: { outcome: 'cancelled' } });
   });
 });

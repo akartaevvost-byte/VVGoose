@@ -26,6 +26,12 @@ export interface AcpChatSessionSnapshot {
   activePromptAttemptId: string | null;
   activeRunId: string | null;
   pendingCancelPromptAttemptId: string | null;
+  hasPendingUserInput?: boolean;
+  unreadCompleted?: boolean;
+  isProcessing?: boolean;
+  isWaitingForInput?: boolean;
+  hasError?: boolean;
+  status?: 'idle' | 'thinking' | 'streaming' | 'waiting_for_input' | 'error' | 'completed';
 }
 
 type SnapshotListener = (snapshot: AcpChatSessionSnapshot) => void;
@@ -40,7 +46,9 @@ interface StoreEntry extends AcpChatSessionSnapshot {
   pendingUserInputRequestIds: Set<string>;
   pendingLocalSteerMessageIds: Set<string>;
   preConfirmedSteerMessageIds: Set<string>;
+  unreadCompleted: boolean;
   // Cached result of the last notify(); reused while a session-load replay is
+
   // in flight so per-notification reads don't deep-clone the growing message
   // array (see applyAcpSessionNotification / getSnapshot).
   lastSnapshot?: AcpChatSessionSnapshot;
@@ -113,10 +121,43 @@ export interface AcpChatSessionActions {
   finishPromptAttemptIfCurrent(sessionId: string, promptAttemptId: string): boolean;
   clearActivePromptAttempt(sessionId: string): AcpChatSessionSnapshot | undefined;
   isCurrentPromptAttempt(sessionId: string, promptAttemptId: string): boolean;
+  markSessionRead(sessionId: string): AcpChatSessionSnapshot | undefined;
+  setUnreadCompleted(sessionId: string, unread: boolean): AcpChatSessionSnapshot | undefined;
 }
 
 interface AcpChatSessionStoreInternal extends AcpChatSessionStore, AcpChatSessionActions {
   subscribe(sessionId: string, listener: (snapshot: AcpChatSessionSnapshot) => void): () => void;
+}
+
+let currentActiveSessionId: string | null = null;
+let currentNavigate: ((path: string) => void) | null = null;
+
+export function pairSessionPath(sessionId: string): string {
+  const searchParams = new URLSearchParams({ resumeSessionId: sessionId });
+  return `/pair?${searchParams.toString()}`;
+}
+
+export function setActiveSessionId(sessionId: string | null): void {
+  currentActiveSessionId = sessionId;
+}
+
+export function getActiveSessionId(): string | null {
+  if (currentActiveSessionId !== null) {
+    return currentActiveSessionId;
+  }
+  if (typeof window !== 'undefined' && window.location?.hash) {
+    try {
+      const hash = window.location.hash;
+      const qIndex = hash.indexOf('?');
+      if (qIndex !== -1) {
+        const params = new URLSearchParams(hash.slice(qIndex));
+        return params.get('resumeSessionId');
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
 }
 
 function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
@@ -186,6 +227,7 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
       pendingUserInputRequestIds: new Set(),
       pendingLocalSteerMessageIds: new Set(),
       preConfirmedSteerMessageIds: new Set(),
+      unreadCompleted: false,
       adapter: createAcpSessionNotificationAdapter(),
     };
     sessionsById.set(sessionId, entry);
@@ -321,6 +363,7 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     entry.pendingCancelPromptAttemptId = null;
     entry.promptCancellationRestoreState = null;
     entry.pendingUserInputRequestIds.clear();
+    entry.unreadCompleted = false;
     entry.chatState = ChatState.Streaming;
     entry.sessionLoadError = undefined;
     entry.notifications = [];
@@ -425,6 +468,9 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     discardPendingLocalSteerMessages(entry);
     entry.progressMessage = undefined;
     entry.chatState = ChatState.Idle;
+    if (getActiveSessionId() !== sessionId) {
+      entry.unreadCompleted = true;
+    }
     notify(sessionId, entry);
     return true;
   };
@@ -449,6 +495,27 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     sessionId,
     promptAttemptId
   ) => sessionsById.get(sessionId)?.activePromptAttemptId === promptAttemptId;
+
+  const markSessionRead: AcpChatSessionActions['markSessionRead'] = (sessionId) => {
+    const entry = sessionsById.get(sessionId);
+    if (!entry) {
+      return undefined;
+    }
+    if (!entry.unreadCompleted) {
+      return snapshotFromEntry(entry);
+    }
+    entry.unreadCompleted = false;
+    return notify(sessionId, entry);
+  };
+
+  const setUnreadCompleted: AcpChatSessionActions['setUnreadCompleted'] = (sessionId, unread) => {
+    const entry = sessionsById.get(sessionId);
+    if (!entry) {
+      return undefined;
+    }
+    entry.unreadCompleted = unread;
+    return notify(sessionId, entry);
+  };
 
   const applyAcpSessionNotification: AcpChatSessionActions['applyAcpSessionNotification'] = (
     notification
@@ -565,6 +632,8 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     finishPromptAttemptIfCurrent,
     clearActivePromptAttempt,
     isCurrentPromptAttempt,
+    markSessionRead,
+    setUnreadCompleted,
     applyAcpSessionNotification,
     applyAcpGooseSessionNotification,
     applyPermissionRequest,
@@ -645,6 +714,8 @@ function actionsFromStore(store: AcpChatSessionStoreInternal): AcpChatSessionAct
     finishPromptAttemptIfCurrent: store.finishPromptAttemptIfCurrent,
     clearActivePromptAttempt: store.clearActivePromptAttempt,
     isCurrentPromptAttempt: store.isCurrentPromptAttempt,
+    markSessionRead: store.markSessionRead,
+    setUnreadCompleted: store.setUnreadCompleted,
   };
 }
 
@@ -703,6 +774,7 @@ function resetReplayState(entry: StoreEntry): void {
   entry.pendingUserInputRequestIds.clear();
   entry.pendingLocalSteerMessageIds.clear();
   entry.preConfirmedSteerMessageIds.clear();
+  entry.unreadCompleted = false;
   entry.adapter = createAcpSessionNotificationAdapter();
 }
 
@@ -765,7 +837,39 @@ function confirmedLocalSteerTextByMessageId(entry: StoreEntry): Map<string, stri
   return textByMessageId;
 }
 
+function computeSessionStatus(
+  entry: StoreEntry
+): 'idle' | 'thinking' | 'streaming' | 'waiting_for_input' | 'error' | 'completed' {
+  if (entry.sessionLoadError) {
+    return 'error';
+  }
+  if (
+    entry.pendingUserInputRequestIds.size > 0 ||
+    entry.chatState === ChatState.WaitingForUserInput
+  ) {
+    return 'waiting_for_input';
+  }
+  if (entry.chatState === ChatState.Thinking) {
+    return 'thinking';
+  }
+  if (entry.chatState === ChatState.Streaming || entry.activePromptAttemptId !== null) {
+    return 'streaming';
+  }
+  if (entry.unreadCompleted) {
+    return 'completed';
+  }
+  return 'idle';
+}
+
 function snapshotFromEntry(entry: StoreEntry): AcpChatSessionSnapshot {
+  const isWaitingForInput =
+    entry.pendingUserInputRequestIds.size > 0 || entry.chatState === ChatState.WaitingForUserInput;
+  const isProcessing =
+    entry.chatState === ChatState.Thinking ||
+    entry.chatState === ChatState.Streaming ||
+    entry.activePromptAttemptId !== null;
+  const hasError = Boolean(entry.sessionLoadError);
+
   return {
     session: entry.session,
     messages: cloneMessages(entry.messages),
@@ -777,9 +881,28 @@ function snapshotFromEntry(entry: StoreEntry): AcpChatSessionSnapshot {
     activePromptAttemptId: entry.activePromptAttemptId,
     activeRunId: entry.activeRunId,
     pendingCancelPromptAttemptId: entry.pendingCancelPromptAttemptId,
+    hasPendingUserInput: isWaitingForInput,
+    unreadCompleted: Boolean(entry.unreadCompleted),
+    isProcessing,
+    isWaitingForInput,
+    hasError,
+    status: computeSessionStatus(entry),
   };
 }
 
 function cloneMessages(messages: Message[]): Message[] {
   return messages.map(cloneMessage);
+}
+
+export function setGlobalNavigate(navigate: ((path: string) => void) | null): void {
+  currentNavigate = navigate;
+}
+
+export function navigateToSession(sessionId: string): void {
+  const path = pairSessionPath(sessionId);
+  if (currentNavigate) {
+    currentNavigate(path);
+  } else if (typeof window !== 'undefined' && window.location) {
+    window.location.hash = path;
+  }
 }

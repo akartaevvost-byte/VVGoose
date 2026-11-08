@@ -3,29 +3,63 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
+import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
 import { getTerminalTheme } from './TerminalTheme';
 import { useTerminal } from '../../contexts/TerminalContext';
 
-interface TerminalInstanceProps {
+export const TERMINAL_FONT_FAMILY = [
+  'ui-monospace',
+  '"JetBrains Mono"',
+  '"SF Mono"',
+  'SFMono-Regular',
+  '"Fira Code"',
+  '"Cascadia Code"',
+  '"Cascadia Mono"',
+  'Menlo',
+  'Consolas',
+  'Monaco',
+  '"Liberation Mono"',
+  '"DejaVu Sans Mono"',
+  'monospace',
+].join(', ');
+
+export interface TerminalInstanceProps {
   id: string;
   active: boolean;
+  fontSize?: number;
   onExit?: (exitCode: number) => void;
 }
 
-export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ id, active, onExit }) => {
+export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
+  id,
+  active,
+  fontSize: propFontSize,
+  onExit,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const { registerClearHandler } = useTerminal();
+  const { registerClearHandler, terminalFontSize } = useTerminal();
+
+  const fontSize = propFontSize ?? terminalFontSize ?? 12;
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 13,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace, var(--font-mono)',
+      cursorStyle: 'bar',
+      cursorWidth: 2,
+      cursorInactiveStyle: 'outline',
+      fontSize,
+      fontFamily: TERMINAL_FONT_FAMILY,
+      lineHeight: 1.2,
+      letterSpacing: 0,
+      fontWeight: 400,
+      fontWeightBold: 600,
+      customGlyphs: true,
+      drawBoldTextInBrightColors: false,
       theme: getTerminalTheme(),
       allowTransparency: true,
       convertEol: true,
@@ -49,6 +83,38 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ id, active, 
     term.open(containerRef.current);
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    // Connect @xterm/addon-webgl with error fallback and context loss handling
+    let webglAddon: WebglAddon | null = null;
+    try {
+      webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => {
+        console.warn('[Terminal] WebGL context lost, falling back to canvas/DOM');
+        webglAddon?.dispose();
+        webglAddon = null;
+      });
+      term.loadAddon(webglAddon);
+    } catch (e) {
+      console.warn(
+        '[Terminal] WebGL renderer could not be initialized, using default renderer:',
+        e
+      );
+      webglAddon = null;
+    }
+
+    // Stabilize font metrics on mount using document.fonts.ready
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      document.fonts?.ready?.then(() => {
+        try {
+          fitAddon.fit();
+          if (window?.electron?.terminalResize && terminalRef.current) {
+            window.electron.terminalResize(id, terminalRef.current.cols, terminalRef.current.rows);
+          }
+        } catch {
+          // Container might not have dimensions yet
+        }
+      });
+    }
 
     // Custom key event handler for shortcuts
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
@@ -142,11 +208,35 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({ id, active, 
       dataDisposable.dispose();
       cleanupData?.();
       cleanupExit?.();
+      webglAddon?.dispose();
+      webglAddon = null;
       term.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
+    // fontSize changes are dynamically handled below without recreating terminal session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, onExit]);
+
+  // Dynamically update terminal font size when changed without recreating session
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (terminalRef.current) {
+      terminalRef.current.options.fontSize = fontSize;
+      try {
+        fitAddonRef.current?.fit();
+        if (window?.electron?.terminalResize && terminalRef.current) {
+          window.electron.terminalResize(id, terminalRef.current.cols, terminalRef.current.rows);
+        }
+      } catch {
+        // Container might not have dimensions yet
+      }
+    }
+  }, [fontSize, id]);
 
   // Register clear handler
   useEffect(() => {

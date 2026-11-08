@@ -242,3 +242,63 @@ export function toastLoading({ title, msg, toastOptions }: ToastLoadingProps) {
     { ...commonToastOptions, autoClose: false, ...toastOptions }
   );
 }
+
+type ToastWarningProps = {
+  title?: string;
+  msg?: string;
+  toastOptions?: ToastOptions;
+};
+
+export function toastWarning({ title, msg, toastOptions = {} }: ToastWarningProps) {
+  if (typeof toast.warning !== 'function') {
+    return undefined;
+  }
+  return toast.warning(
+    <div>
+      {title ? <strong className="font-medium">{title}</strong> : null}
+      {title ? <div>{msg}</div> : null}
+    </div>,
+    { ...commonToastOptions, autoClose: 5000, ...toastOptions }
+  );
+}
+
+type ToastActionProps = {
+  title?: string;
+  msg?: string;
+  actionLabel: string;
+  onAction: () => void;
+  toastOptions?: ToastOptions;
+};
+
+export function toastAction({
+  title,
+  msg,
+  actionLabel,
+  onAction,
+  toastOptions = {},
+}: ToastActionProps) {
+  if (typeof toast.info !== 'function') {
+    return undefined;
+  }
+  return toast.info(
+    <div className="flex flex-col gap-2">
+      <div>
+        {title ? <strong className="font-medium">{title}</strong> : null}
+        {title && msg ? <div>{msg}</div> : msg}
+      </div>
+      <div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAction();
+          }}
+        >
+          {actionLabel}
+        </Button>
+      </div>
+    </div>,
+    { ...commonToastOptions, autoClose: 8000, ...toastOptions }
+  );
+}

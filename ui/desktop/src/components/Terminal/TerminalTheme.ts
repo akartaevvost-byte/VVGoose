@@ -5,14 +5,20 @@ export function getTerminalTheme(): ITheme {
     return {
       background: '#15141b',
       foreground: '#e6e6e6',
-      cursor: '#e6e6e6',
+      cursor: '#58a6ff',
+      cursorAccent: '#15141b',
+      selectionBackground: 'rgba(56, 139, 253, 0.35)',
+      selectionForeground: '#ffffff',
     };
   }
 
+  const isAura = document.documentElement.getAttribute('data-theme') === 'aura';
   const isDark =
     document.documentElement.classList.contains('dark') ||
     document.documentElement.getAttribute('data-theme') === 'dark' ||
-    (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+    (!isAura &&
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-color-scheme: dark)').matches);
 
   const style =
     typeof window !== 'undefined' ? window.getComputedStyle(document.documentElement) : null;
@@ -21,16 +27,44 @@ export function getTerminalTheme(): ITheme {
     (isDark ? '#15141b' : '#ffffff');
   const fg =
     style?.getPropertyValue('--color-text-primary').trim() || (isDark ? '#e6e6e6' : '#1f2328');
-  const cursor = fg;
-  const selection = isDark ? 'rgba(0, 163, 150, 0.35)' : 'rgba(0, 163, 150, 0.25)';
+
+  if (isAura) {
+    return {
+      background: bg,
+      foreground: fg,
+      cursor: '#a277ff',
+      cursorAccent: bg,
+      selectionBackground: 'rgba(162, 119, 255, 0.3)',
+      selectionForeground: '#ffffff',
+      selectionInactiveBackground: 'rgba(162, 119, 255, 0.15)',
+      black: '#15141b',
+      red: '#ff6767',
+      green: '#61ffca',
+      yellow: '#ffca85',
+      blue: '#82e2ff',
+      magenta: '#a277ff',
+      cyan: '#61ffca',
+      white: '#edecee',
+      brightBlack: '#4e496c',
+      brightRed: '#ff8585',
+      brightGreen: '#7effd4',
+      brightYellow: '#ffd59e',
+      brightBlue: '#9de8ff',
+      brightMagenta: '#b894ff',
+      brightCyan: '#85ffe0',
+      brightWhite: '#ffffff',
+    };
+  }
 
   if (isDark) {
     return {
       background: bg,
       foreground: fg,
-      cursor,
+      cursor: '#58a6ff',
       cursorAccent: bg,
-      selectionBackground: selection,
+      selectionBackground: 'rgba(56, 139, 253, 0.35)',
+      selectionForeground: '#ffffff',
+      selectionInactiveBackground: 'rgba(56, 139, 253, 0.2)',
       black: '#1f2328',
       red: '#ff7b72',
       green: '#7ee787',
@@ -53,9 +87,11 @@ export function getTerminalTheme(): ITheme {
   return {
     background: bg,
     foreground: fg,
-    cursor,
+    cursor: '#0969da',
     cursorAccent: bg,
-    selectionBackground: selection,
+    selectionBackground: 'rgba(9, 105, 218, 0.25)',
+    selectionForeground: '#1f2328',
+    selectionInactiveBackground: 'rgba(9, 105, 218, 0.15)',
     black: '#24292f',
     red: '#cf222e',
     green: '#116329',

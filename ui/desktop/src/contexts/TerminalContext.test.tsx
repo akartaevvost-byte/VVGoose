@@ -1,7 +1,12 @@
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TerminalProvider, useTerminal, DEFAULT_TERMINAL_HEIGHT } from './TerminalContext';
+import {
+  TerminalProvider,
+  useTerminal,
+  DEFAULT_TERMINAL_HEIGHT,
+  DEFAULT_TERMINAL_FONT_SIZE,
+} from './TerminalContext';
 
 vi.mock('./WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -38,6 +43,7 @@ describe('TerminalContext', () => {
     expect(result.current.isTerminalVisible).toBe(false);
     expect(result.current.terminalHeight).toBe(DEFAULT_TERMINAL_HEIGHT);
     expect(result.current.isMaximized).toBe(false);
+    expect(result.current.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
   });
 
   it('creates a new terminal session and sets it active', () => {
@@ -172,6 +178,31 @@ describe('TerminalContext', () => {
 
     expect(result.current.terminalHeight).toBe(350);
     expect(localStorage.getItem('terminal_height')).toBe('350');
+  });
+
+  it('updates terminalFontSize, clamps to min/max and persists to localStorage', () => {
+    const { result } = renderHook(() => useTerminal(), { wrapper });
+
+    act(() => {
+      result.current.setTerminalFontSize?.(14);
+    });
+
+    expect(result.current.terminalFontSize).toBe(14);
+    expect(localStorage.getItem('terminal_font_size')).toBe('14');
+
+    // Clamp below MIN_TERMINAL_FONT_SIZE (10)
+    act(() => {
+      result.current.setTerminalFontSize?.(8);
+    });
+    expect(result.current.terminalFontSize).toBe(10);
+    expect(localStorage.getItem('terminal_font_size')).toBe('10');
+
+    // Clamp above MAX_TERMINAL_FONT_SIZE (20)
+    act(() => {
+      result.current.setTerminalFontSize?.(24);
+    });
+    expect(result.current.terminalFontSize).toBe(20);
+    expect(localStorage.getItem('terminal_font_size')).toBe('20');
   });
 
   it('sends data to active terminal on runCommand', () => {

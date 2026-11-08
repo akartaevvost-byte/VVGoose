@@ -6,7 +6,8 @@ import { TerminalInstance } from './TerminalInstance';
 import { Button } from '../ui/button';
 
 export const TerminalPanel: React.FC = () => {
-  const { sessions, activeTerminalId, createTerminal, updateSessionExitCode } = useTerminal();
+  const { sessions, activeTerminalId, createTerminal, updateSessionExitCode, terminalFontSize } =
+    useTerminal();
 
   return (
     <div className="flex flex-col w-full h-full bg-background-primary overflow-hidden rounded-xl border border-border-primary">
@@ -33,6 +34,7 @@ export const TerminalPanel: React.FC = () => {
               key={session.id}
               id={session.id}
               active={session.id === activeTerminalId}
+              fontSize={terminalFontSize}
               onExit={(exitCode) => updateSessionExitCode(session.id, exitCode)}
             />
           ))
