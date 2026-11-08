@@ -6,8 +6,9 @@ import { useTheme } from '../../contexts/ThemeContext';
 import type { WorkspaceFolderInfo } from '../../types/fileSystem';
 import { EditorTabs } from './EditorTabs';
 import { EmptyEditorView } from './EmptyEditorView';
+import { MarkdownPreview } from './MarkdownPreview';
 import { getLanguageFromFilename } from './languageDetector';
-import { Save, Check, X, GitCompare } from 'lucide-react';
+import { Save, Check, X, GitCompare, Eye, Code2 } from 'lucide-react';
 import { cn } from '../../utils';
 
 // Configure monaco loader to use local instance from bundle instead of remote CDN
@@ -142,6 +143,8 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
     col: 1,
   });
 
+  const [previewMode, setPreviewMode] = useState(false);
+
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const editorRootRef = useRef<HTMLDivElement>(null);
   const activeFileRef = useRef(activeFile);
@@ -268,8 +271,12 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
 
   const language = activeFile ? getLanguageFromFilename(activeFile.name) : 'plaintext';
 
+  const isMarkdownFile = language === 'markdown';
+
   const isCurrentFileDiff =
     pendingDiff && (!activeFile || pendingDiff.filePath === activeFile.path);
+
+  const showPreview = isMarkdownFile && previewMode && !isCurrentFileDiff;
 
   return (
     <div
@@ -340,6 +347,8 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
             onMount={handleDiffEditorMount}
             options={DIFF_EDITOR_OPTIONS}
           />
+        ) : activeFile && showPreview ? (
+          <MarkdownPreview key={activeFile.path} content={activeFile.content} isDark={isDark} />
         ) : activeFile ? (
           <Editor
             key={activeFile.path}
@@ -381,6 +390,23 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
           </div>
 
           <div className="flex items-center gap-3">
+            {isMarkdownFile && !isCurrentFileDiff && (
+              <button
+                type="button"
+                data-testid="markdown-preview-toggle"
+                onClick={() => setPreviewMode((v) => !v)}
+                className={cn(
+                  'flex items-center gap-1 transition-colors cursor-pointer',
+                  showPreview ? 'text-goose-teal' : 'text-text-muted hover:text-text-primary'
+                )}
+                title={
+                  showPreview ? 'Показать исходный код Markdown' : 'Показать отрендеренный Markdown'
+                }
+              >
+                {showPreview ? <Code2 className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                <span>{showPreview ? 'Код' : 'Предпросмотр'}</span>
+              </button>
+            )}
             {!isCurrentFileDiff && activeFile.isDirty && (
               <button
                 type="button"
@@ -392,9 +418,11 @@ export const EditorArea: React.FC<{ className?: string }> = ({ className }) => {
                 <span>Сохранить</span>
               </button>
             )}
-            <span>
-              Строка {cursorPosition.line}, Колонка {cursorPosition.col}
-            </span>
+            {!showPreview && (
+              <span>
+                Строка {cursorPosition.line}, Колонка {cursorPosition.col}
+              </span>
+            )}
             <span className="uppercase">{language}</span>
             <span>UTF-8</span>
           </div>

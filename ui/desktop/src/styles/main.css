@@ -111,7 +111,10 @@
 
   /* Typography */
   --font-sans: initial;
-  --font-mono: initial;
+  /* Same stack as the integrated terminal (see Terminal/terminalFont.ts) */
+  --font-mono:
+    ui-monospace, 'JetBrains Mono', 'SF Mono', SFMono-Regular, 'Fira Code', 'Cascadia Code',
+    'Cascadia Mono', Menlo, Consolas, Monaco, 'Liberation Mono', 'DejaVu Sans Mono', monospace;
   --font-weight-normal: initial;
   --font-weight-medium: initial;
   --font-weight-semibold: initial;

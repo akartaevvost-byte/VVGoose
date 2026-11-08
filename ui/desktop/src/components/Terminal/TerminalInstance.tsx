@@ -6,23 +6,10 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
 import { getTerminalTheme } from './TerminalTheme';
+import { TERMINAL_FONT_FAMILY } from './terminalFont';
 import { useTerminal } from '../../contexts/TerminalContext';
 
-export const TERMINAL_FONT_FAMILY = [
-  'ui-monospace',
-  '"JetBrains Mono"',
-  '"SF Mono"',
-  'SFMono-Regular',
-  '"Fira Code"',
-  '"Cascadia Code"',
-  '"Cascadia Mono"',
-  'Menlo',
-  'Consolas',
-  'Monaco',
-  '"Liberation Mono"',
-  '"DejaVu Sans Mono"',
-  'monospace',
-].join(', ');
+export { TERMINAL_FONT_FAMILY } from './terminalFont';
 
 export interface TerminalInstanceProps {
   id: string;

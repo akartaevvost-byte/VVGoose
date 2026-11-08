@@ -72,6 +72,7 @@ module.exports = [
         EventTarget: 'readonly',
         Element: 'readonly',
         HTMLElement: 'readonly',
+        HTMLAnchorElement: 'readonly',
         HTMLAudioElement: 'readonly',
         HTMLInputElement: 'readonly',
         HTMLSelectElement: 'readonly',

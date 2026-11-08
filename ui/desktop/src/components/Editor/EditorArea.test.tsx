@@ -193,6 +193,14 @@ describe('EditorArea', () => {
             error: null,
           });
         }
+        if (path === '/mock/workspace/docs/guide.md') {
+          return Promise.resolve({
+            found: true,
+            filePath: path,
+            content: '# Guide\n\n```rust\nfn main() {}\n```\n',
+            error: null,
+          });
+        }
         if (path === '/mock/frontend/src/App.tsx') {
           return Promise.resolve({
             found: true,
@@ -265,7 +273,6 @@ describe('EditorArea', () => {
   });
 
   it('opens files in tabs and displays Monaco editor content', async () => {
-
     render(
       <WorkspaceProvider>
         <TestFileOpener
@@ -352,6 +359,98 @@ describe('EditorArea', () => {
     await waitFor(() => {
       expect(screen.queryByText('Не сохранено')).toBeNull();
     });
+  });
+
+  it('toggles between rendered preview and source for markdown files', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener filesToOpen={[{ path: '/mock/workspace/README.md' }]} />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('open-btn-/mock/workspace/README.md'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('monaco-editor').getAttribute('data-language')).toBe('markdown');
+    });
+
+    // Source mode first, toggle offers preview
+    const toggle = screen.getByTestId('markdown-preview-toggle');
+    expect(toggle.textContent).toContain('Предпросмотр');
+
+    fireEvent.click(toggle);
+
+    // Monaco is replaced by the rendered markdown
+    await waitFor(() => {
+      expect(screen.queryByTestId('monaco-editor')).toBeNull();
+    });
+    expect(screen.getByTestId('markdown-preview')).toBeDefined();
+    expect(screen.getByRole('heading', { level: 1, name: 'Project README' })).toBeDefined();
+    expect(screen.getByText('Documentation here.')).toBeDefined();
+
+    // Toggle offers going back to source
+    expect(toggle.textContent).toContain('Код');
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('monaco-editor')).toBeDefined();
+    });
+    expect(screen.queryByTestId('markdown-preview')).toBeNull();
+    expect(screen.getByDisplayValue(/Project README/)).toBeDefined();
+  });
+
+  it('renders code blocks in the terminal font inside a panel', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener filesToOpen={[{ path: '/mock/workspace/docs/guide.md' }]} />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('open-btn-/mock/workspace/docs/guide.md'));
+
+    const toggle = await waitFor(() => {
+      const btn = screen.getByTestId('markdown-preview-toggle');
+      expect(btn).toBeDefined();
+      return btn;
+    });
+    fireEvent.click(toggle);
+
+    const panel = await waitFor(() => {
+      const el = screen.getByTestId('markdown-code-block');
+      expect(el).toBeDefined();
+      return el;
+    });
+
+    const code = panel.querySelector('code');
+    expect(code).not.toBeNull();
+    expect(code?.style.fontFamily).toContain('SF Mono');
+    expect(code?.textContent).toContain('fn main() {}');
+  });
+
+  it('hides the markdown toggle for non-markdown files', async () => {
+    localStorage.setItem('goose_workspace_path', '/mock/workspace');
+
+    render(
+      <WorkspaceProvider>
+        <TestFileOpener filesToOpen={[{ path: '/mock/workspace/src/main.rs' }]} />
+        <EditorArea />
+      </WorkspaceProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('open-btn-/mock/workspace/src/main.rs'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('monaco-editor').getAttribute('data-language')).toBe('rust');
+    });
+
+    expect(screen.queryByTestId('markdown-preview-toggle')).toBeNull();
   });
 
   it('closes a tab when close button is clicked', async () => {
