@@ -1,5 +1,6 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '../../utils';
 
 const SCROLL_EDGE_GAP = 1;
 
@@ -26,6 +27,9 @@ interface TabStripProps {
   nextLabel: string;
   revealKey: string;
   tabsKey: string;
+  className?: string;
+  tabsClassName?: string;
+  trailing?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -35,6 +39,9 @@ export const TabStrip: React.FC<TabStripProps> = ({
   nextLabel,
   revealKey,
   tabsKey,
+  className,
+  tabsClassName,
+  trailing,
   children,
 }) => {
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -96,7 +103,12 @@ export const TabStrip: React.FC<TabStripProps> = ({
   const showScrollButtons = canScrollLeft || canScrollRight;
 
   return (
-    <div className="no-drag flex items-center h-9 bg-background-secondary/80 border-b border-border-primary select-none">
+    <div
+      className={cn(
+        'no-drag flex items-center h-9 bg-background-secondary/80 border-b border-border-primary select-none',
+        className
+      )}
+    >
       {showScrollButtons && (
         <button
           type="button"
@@ -111,7 +123,10 @@ export const TabStrip: React.FC<TabStripProps> = ({
       <div
         ref={tabsContainerRef}
         data-testid={testId}
-        className="relative flex min-w-0 flex-1 items-center overflow-x-hidden px-1"
+        className={cn(
+          'relative flex min-w-0 flex-1 items-center overflow-x-hidden px-1',
+          tabsClassName
+        )}
       >
         {children}
       </div>
@@ -126,6 +141,7 @@ export const TabStrip: React.FC<TabStripProps> = ({
           <ChevronRight className="h-3 w-3" />
         </button>
       )}
+      {trailing}
     </div>
   );
 };

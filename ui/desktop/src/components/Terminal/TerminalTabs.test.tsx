@@ -12,6 +12,25 @@ vi.mock('../../contexts/WorkspaceContext', () => ({
   useWorkspace: vi.fn(),
 }));
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
+function mockStripSize(size: { client: number; scroll: number }) {
+  let scrollLeft = 0;
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(size.client);
+  vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(size.scroll);
+  vi.spyOn(HTMLElement.prototype, 'scrollLeft', 'get').mockImplementation(() => scrollLeft);
+  vi.spyOn(HTMLElement.prototype, 'scrollLeft', 'set').mockImplementation(((value: number) => {
+    scrollLeft = value;
+  }) as (value: number) => void);
+  return () => scrollLeft;
+}
+
 describe('TerminalTabs', () => {
   const mockCreateTerminal = vi.fn();
   const mockCloseTerminal = vi.fn();
@@ -128,5 +147,39 @@ describe('TerminalTabs', () => {
     const closePanelBtn = screen.getByTitle('Close Terminal Panel');
     fireEvent.click(closePanelBtn);
     expect(mockSetIsTerminalVisible).toHaveBeenCalledWith(false);
+  });
+
+  it('does not show scroll buttons when all tabs fit', () => {
+    mockStripSize({ client: 500, scroll: 300 });
+    render(<TerminalTabs />);
+
+    const scroller = screen.getByTestId('terminal-tabs-scroller');
+    expect(scroller.className).toContain('overflow-x-hidden');
+    expect(scroller.className).not.toContain('overflow-x-auto');
+    expect(screen.queryByRole('button', { name: 'Предыдущие терминалы' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Следующие терминалы' })).toBeNull();
+  });
+
+  it('scrolls hidden terminal tabs with the side buttons (< and >) without horizontal scrollbar', () => {
+    const readScrollLeft = mockStripSize({ client: 100, scroll: 600 });
+    render(<TerminalTabs />);
+
+    const scroller = screen.getByTestId('terminal-tabs-scroller');
+    expect(scroller.className).toContain('overflow-x-hidden');
+    expect(scroller.className).not.toContain('overflow-x-auto');
+
+    const next = screen.getByRole('button', { name: 'Следующие терминалы' });
+    const previous = screen.getByRole('button', { name: 'Предыдущие терминалы' });
+    expect(previous).toHaveProperty('disabled', true);
+
+    fireEvent.click(next);
+    expect(readScrollLeft()).toBe(120);
+    expect(screen.getByRole('button', { name: 'Предыдущие терминалы' })).toHaveProperty(
+      'disabled',
+      false
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Предыдущие терминалы' }));
+    expect(readScrollLeft()).toBe(0);
   });
 });

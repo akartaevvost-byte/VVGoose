@@ -161,16 +161,21 @@ export const TerminalProvider: React.FC<TerminalProviderProps> = ({ children }) 
     }
   }, [sessions, activeTerminalId]);
 
+  const isTerminalVisibleRef = useRef(isTerminalVisible);
+  isTerminalVisibleRef.current = isTerminalVisible;
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+
   const toggleTerminal = useCallback(() => {
-    setIsTerminalVisible((prev) => {
-      const next = !prev;
-      if (next && sessions.length === 0) {
-        // Will create session on opening if empty
-        setTimeout(() => createTerminal(), 0);
+    if (isTerminalVisibleRef.current) {
+      setIsTerminalVisible(false);
+    } else {
+      setIsTerminalVisible(true);
+      if (sessionsRef.current.length === 0) {
+        createTerminal();
       }
-      return next;
-    });
-  }, [sessions.length, createTerminal, setIsTerminalVisible]);
+    }
+  }, [createTerminal, setIsTerminalVisible]);
 
   const toggleMaximize = useCallback(() => {
     setIsMaximized((prev) => !prev);

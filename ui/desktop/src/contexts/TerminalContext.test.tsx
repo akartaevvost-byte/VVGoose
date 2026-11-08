@@ -122,16 +122,33 @@ describe('TerminalContext', () => {
     expect(result.current.sessions[0].isRunning).toBe(false);
   });
 
-  it('toggles visibility and maximize state', () => {
+  it('toggles visibility and maximize state, creating exactly one session on open', () => {
     const { result } = renderHook(() => useTerminal(), { wrapper });
 
     expect(result.current.isTerminalVisible).toBe(false);
+    expect(result.current.sessions).toHaveLength(0);
 
     act(() => {
       result.current.toggleTerminal();
     });
 
     expect(result.current.isTerminalVisible).toBe(true);
+    expect(result.current.sessions).toHaveLength(1);
+    expect(result.current.sessions[0].title).toBe('Terminal 1');
+
+    // Toggle off
+    act(() => {
+      result.current.toggleTerminal();
+    });
+    expect(result.current.isTerminalVisible).toBe(false);
+    expect(result.current.sessions).toHaveLength(1);
+
+    // Toggle back on: should restore existing session and NOT duplicate
+    act(() => {
+      result.current.toggleTerminal();
+    });
+    expect(result.current.isTerminalVisible).toBe(true);
+    expect(result.current.sessions).toHaveLength(1);
 
     act(() => {
       result.current.toggleMaximize();
