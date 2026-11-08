@@ -76,6 +76,7 @@ export interface Settings {
   language: LanguageSetting;
   responseStyle: string;
   showPricing: boolean;
+  swapChatAndExplorer: boolean;
   seenAnnouncementIds: string[];
   recentModels: RecentModel[];
   showThinking: ShowThinking;
@@ -122,6 +123,7 @@ export const defaultSettings: Settings = {
   language: 'system',
   responseStyle: 'concise',
   showPricing: true,
+  swapChatAndExplorer: false,
   seenAnnouncementIds: [],
   recentModels: [],
   showThinking: 'collapsed',

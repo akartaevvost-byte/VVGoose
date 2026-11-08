@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "Configura l'aspetto di goose sul tuo sistema"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "Per impostazione predefinita, la chat è a sinistra e i file a destra. Se attivata, i file compaiono a sinistra e la chat a destra."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Scambia le posizioni della chat e dell'esploratore file"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Aspetto"
   },

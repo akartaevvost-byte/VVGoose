@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "Định cấu hình cách goose hiển thị trên hệ thống của bạn"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "Theo mặc định, ô chat nằm ở bên trái và các tệp nằm ở bên phải. Khi bật, tệp hiển thị ở bên trái và ô chat hiển thị ở bên phải."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Đổi vị trí ô chat và trình khám phá tệp"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Giao diện"
   },

@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "Configura cómo se ve goose en tu sistema"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "De forma predeterminada, el chat está a la izquierda y los archivos a la derecha. Al activarlo, los archivos aparecen a la izquierda y el chat a la derecha."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Intercambiar las posiciones del chat y el explorador de archivos"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Apariencia"
   },

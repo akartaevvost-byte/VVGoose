@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { IntlProvider } from 'react-intl';
@@ -52,6 +52,8 @@ describe('AppLayout 3-panel layout', () => {
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       platform: 'darwin',
       getIsFullScreen: vi.fn().mockResolvedValue(false),
+      getSetting: vi.fn().mockResolvedValue(false),
+      setSetting: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       off: vi.fn(),
       workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
@@ -195,6 +197,8 @@ describe('AppLayout 3-panel layout', () => {
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       platform: 'win32',
       getIsFullScreen: vi.fn().mockResolvedValue(false),
+      getSetting: vi.fn().mockResolvedValue(false),
+      setSetting: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       off: vi.fn(),
       workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
@@ -250,5 +254,212 @@ describe('AppLayout 3-panel layout', () => {
     fireEvent.keyDown(window, { key: 'J', metaKey: true });
     const chatContainerRestored = screen.getByTestId('chat-sessions-container');
     expect(chatContainerRestored.parentElement?.parentElement?.style.display).not.toBe('none');
+  });
+});
+
+describe('AppLayout swapChatAndExplorer layout', () => {
+  const mockLiveVoice: LiveVoiceController = {
+    activeSessionId: null,
+    liveVoiceSessionId: null,
+    phase: 'idle',
+    muted: false,
+    start: vi.fn(),
+    stop: vi.fn(),
+    toggleMuted: vi.fn(),
+  };
+
+  const mockChat = {
+    sessionId: 'test-session',
+    name: 'Test Chat',
+    messages: [],
+    recipe: null,
+    recipeParameterValues: null,
+  };
+
+  const isBefore = (a: Element, b: Element) =>
+    Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  const panelWrapper = (testId: string, levels: number): HTMLElement | null => {
+    let el: HTMLElement | null = screen.getByTestId(testId);
+    for (let i = 0; i < levels && el; i++) {
+      el = el.parentElement;
+    }
+    return el;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      platform: 'darwin',
+      getIsFullScreen: vi.fn().mockResolvedValue(false),
+      getSetting: vi.fn().mockResolvedValue(false),
+      setSetting: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      off: vi.fn(),
+      workspaceStartWatching: vi.fn().mockResolvedValue(undefined),
+      workspaceStopWatching: vi.fn().mockResolvedValue(undefined),
+    };
+  });
+
+  const renderWithProviders = (initialRoute = '/pair') => {
+    return render(
+      <IntlProvider locale="en" defaultLocale="en" messages={{}}>
+        <MemoryRouter initialEntries={[initialRoute]}>
+          <ChatProvider chat={mockChat} setChat={vi.fn()} contextKey="test">
+            <AppLayout activeSessions={[]} liveVoice={mockLiveVoice} />
+          </ChatProvider>
+        </MemoryRouter>
+      </IntlProvider>
+    );
+  };
+
+  const renderSwapped = async (initialRoute = '/pair') => {
+    (window.electron.getSetting as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    renderWithProviders(initialRoute);
+    // The provider loads the setting asynchronously: wait for the swap to apply
+    await waitFor(() => {
+      expect(
+        isBefore(screen.getByTestId('file-explorer'), screen.getByTestId('chat-sessions-container'))
+      ).toBe(true);
+    });
+  };
+
+  const splitters = () => screen.getAllByTitle('Перетащите для изменения ширины');
+
+  it('renders chat left of the editor and the explorer right of it by default', () => {
+    renderWithProviders('/pair');
+
+    expect(
+      isBefore(screen.getByTestId('chat-sessions-container'), screen.getByTestId('editor-area'))
+    ).toBe(true);
+    expect(isBefore(screen.getByTestId('editor-area'), screen.getByTestId('file-explorer'))).toBe(
+      true
+    );
+  });
+
+  it('orders the header buttons chat, editor, files by default', () => {
+    renderWithProviders('/pair');
+
+    const chat = screen.getByTitle('Toggle chat (⌘J)');
+    const editor = screen.getByTitle('Toggle editor');
+    const explorer = screen.getByTitle('Toggle File Explorer (⌘⇧E)');
+    expect(isBefore(chat, editor)).toBe(true);
+    expect(isBefore(editor, explorer)).toBe(true);
+  });
+
+  it('moves the explorer to the left and the chat to the right when swapped', async () => {
+    await renderSwapped();
+    expect(isBefore(screen.getByTestId('file-explorer'), screen.getByTestId('editor-area'))).toBe(
+      true
+    );
+    expect(
+      isBefore(screen.getByTestId('editor-area'), screen.getByTestId('chat-sessions-container'))
+    ).toBe(true);
+  });
+
+  it('swaps the header toggle buttons when swapped', async () => {
+    await renderSwapped();
+    const chat = screen.getByTitle('Toggle chat (⌘J)');
+    const editor = screen.getByTitle('Toggle editor');
+    const explorer = screen.getByTitle('Toggle File Explorer (⌘⇧E)');
+    expect(isBefore(explorer, editor)).toBe(true);
+    expect(isBefore(editor, chat)).toBe(true);
+    // The files button highlights the left slot of the layout icon
+    const iconPath = explorer.querySelector('path')?.getAttribute('d') ?? '';
+    expect(iconPath.startsWith('M 3.5')).toBe(true);
+  });
+
+  it('keeps the chat pinned to the right edge when swapped and the editor is hidden', async () => {
+    await renderSwapped();
+    const chatWrapper = panelWrapper('chat-sessions-container', 3);
+    const explorerWrapper = panelWrapper('file-explorer', 2);
+    expect(chatWrapper?.className).toContain('ml-auto');
+    expect(explorerWrapper?.className).not.toContain('ml-auto');
+
+    fireEvent.click(screen.getByTitle('Toggle editor'));
+    expect(screen.queryByTestId('editor-area')).toBeNull();
+    // The chat must stay anchored to the right window edge at its fixed width
+    expect(chatWrapper?.className).toContain('ml-auto');
+    expect(chatWrapper?.style.width).not.toBe('100%');
+  });
+
+  it('resizes the chat with the left splitter in the default layout', () => {
+    renderWithProviders('/pair');
+
+    const [leftSplitter] = splitters();
+    fireEvent.mouseDown(leftSplitter, { clientX: 500 });
+    fireEvent.mouseMove(window, { clientX: 560 });
+    fireEvent.mouseUp(window);
+
+    expect(localStorage.getItem('goose_chat_width')).toBe('480');
+    expect(localStorage.getItem('goose_explorer_width')).toBeNull();
+  });
+
+  it('resizes the explorer with the right splitter in the default layout', () => {
+    renderWithProviders('/pair');
+
+    const [, rightSplitter] = splitters();
+    fireEvent.mouseDown(rightSplitter, { clientX: 700 });
+    fireEvent.mouseMove(window, { clientX: 660 });
+    fireEvent.mouseUp(window);
+
+    expect(localStorage.getItem('goose_explorer_width')).toBe('320');
+    expect(localStorage.getItem('goose_chat_width')).toBeNull();
+  });
+
+  it('resizes the explorer with the left splitter when swapped', async () => {
+    await renderSwapped();
+    const [leftSplitter] = splitters();
+    fireEvent.mouseDown(leftSplitter, { clientX: 300 });
+    fireEvent.mouseMove(window, { clientX: 380 });
+    fireEvent.mouseUp(window);
+
+    expect(localStorage.getItem('goose_explorer_width')).toBe('360');
+    expect(localStorage.getItem('goose_chat_width')).toBeNull();
+  });
+
+  it('resizes the chat with the right splitter when swapped', async () => {
+    await renderSwapped();
+    const [, rightSplitter] = splitters();
+    fireEvent.mouseDown(rightSplitter, { clientX: 800 });
+    fireEvent.mouseMove(window, { clientX: 740 });
+    fireEvent.mouseUp(window);
+
+    expect(localStorage.getItem('goose_chat_width')).toBe('480');
+    expect(localStorage.getItem('goose_explorer_width')).toBeNull();
+  });
+
+  it('keeps the chat and explorer shortcuts working when swapped', async () => {
+    await renderSwapped();
+    fireEvent.keyDown(window, { key: 'j', metaKey: true });
+    expect(screen.getByTestId('chat-sessions-container').parentElement?.className).toContain(
+      'hidden'
+    );
+
+    fireEvent.keyDown(window, { key: 'e', metaKey: true, shiftKey: true });
+    expect(screen.queryByTestId('file-explorer')).toBeNull();
+  });
+
+  it('orders the empty state buttons chat, editor, files by default', () => {
+    renderWithProviders('/pair');
+
+    fireEvent.click(screen.getByTitle('Toggle chat (⌘J)'));
+    fireEvent.click(screen.getByTitle('Toggle editor'));
+    fireEvent.click(screen.getByTitle('Toggle File Explorer (⌘⇧E)'));
+
+    expect(isBefore(screen.getByText('Чат'), screen.getByText('Редактор'))).toBe(true);
+    expect(isBefore(screen.getByText('Редактор'), screen.getByText('Файлы'))).toBe(true);
+  });
+
+  it('orders the empty state buttons files, editor, chat when swapped', async () => {
+    await renderSwapped();
+    fireEvent.click(screen.getByTitle('Toggle File Explorer (⌘⇧E)'));
+    fireEvent.click(screen.getByTitle('Toggle editor'));
+    fireEvent.click(screen.getByTitle('Toggle chat (⌘J)'));
+
+    expect(isBefore(screen.getByText('Файлы'), screen.getByText('Редактор'))).toBe(true);
+    expect(isBefore(screen.getByText('Редактор'), screen.getByText('Чат'))).toBe(true);
   });
 });

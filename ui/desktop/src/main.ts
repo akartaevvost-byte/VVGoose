@@ -2096,6 +2096,7 @@ const validSettingKeys: Set<string> = new Set([
   'language',
   'responseStyle',
   'showPricing',
+  'swapChatAndExplorer',
   'seenAnnouncementIds',
   'disableAutoDownload',
   'recentModels',

@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "goose'nin sisteminizde nasıl görüneceğini yapılandırın"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "Varsayılan olarak sohbet solda, dosyalar sağdadır. Etkinleştirildiğinde dosyalar solda, sohbet sağda görünür."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Sohbet ve dosya gezgini konumlarını değiştir"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Görünüm"
   },

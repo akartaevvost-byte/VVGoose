@@ -2433,7 +2433,7 @@
     "defaultMessage": "Add custom model ID (e.g. gpt-4.5-preview, claude-3-7-sonnet)"
   },
   "modelVisibilitySettings.description": {
-    "defaultMessage": "Choose which models appear in the quick model selector in the chat toolbar. Pinned models can be switched in a single click without opening settings."
+    "defaultMessage": "Choose which models appear in the quick model selector in the chat toolbar. Only checked models will appear in the dropdown list."
   },
   "modelVisibilitySettings.filterPlaceholder": {
     "defaultMessage": "Filter models..."
@@ -2480,8 +2480,8 @@
   "modelsBottomBar.noModelsFound": {
     "defaultMessage": "No models found matching \"{query}\""
   },
-  "modelsBottomBar.pinnedModels": {
-    "defaultMessage": "Pinned Models"
+  "modelsBottomBar.noVisibleModels": {
+    "defaultMessage": "No models selected. Configure visible models in Settings."
   },
   "modelsBottomBar.recentModels": {
     "defaultMessage": "Recent"
@@ -4207,6 +4207,12 @@
   },
   "settings.appearance.description": {
     "defaultMessage": "Configure how goose appears on your system"
+  },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "By default, chat is on the left and files are on the right. When enabled, files appear on the left and chat on the right."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Swap chat and file explorer positions"
   },
   "settings.appearance.title": {
     "defaultMessage": "Appearance"

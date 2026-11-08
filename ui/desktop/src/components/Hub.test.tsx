@@ -174,6 +174,8 @@ describe('Hub', () => {
       setIsExplorerVisible: vi.fn(),
       explorerWidth: 280,
       setExplorerWidth: vi.fn(),
+      swapChatAndExplorer: false,
+      setSwapChatAndExplorer: vi.fn(),
       pendingDiff: null,
       setPendingDiff: vi.fn(),
       proposeDiff: vi.fn(),

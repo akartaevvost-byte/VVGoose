@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "Konfigurasikan cara goose muncul pada sistem anda"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "Secara lalai, sembang berada di kiri dan fail di kanan. Apabila diaktifkan, fail dipaparkan di kiri dan sembang di kanan."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Tukar kedudukan sembang dan pelayar fail"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Penampilan"
   },

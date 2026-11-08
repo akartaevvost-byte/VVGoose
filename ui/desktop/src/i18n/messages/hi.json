@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "कॉन्फ़िगर करें कि goose आपके सिस्टम पर कैसे दिखाई देता है"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "डिफ़ॉल्ट रूप से चैट बाईं ओर और फ़ाइलें दाईं ओर होती हैं। चालू करने पर फ़ाइलें बाईं ओर और चैट दाईं ओर दिखती है।"
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "चैट और फ़ाइल एक्सप्लोरर की स्थिति बदलें"
+  },
   "settings.appearance.title": {
     "defaultMessage": "दिखावट"
   },

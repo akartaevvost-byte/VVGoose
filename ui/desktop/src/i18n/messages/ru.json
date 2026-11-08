@@ -3956,6 +3956,12 @@
   "settings.appearance.description": {
     "defaultMessage": "Настройте, как goose отображается в вашей системе"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "По умолчанию чат расположен слева, а файлы — справа. При включении проводник отображается слева, а чат — справа."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Поменять местами чат и проводник файлов"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Внешний вид"
   },

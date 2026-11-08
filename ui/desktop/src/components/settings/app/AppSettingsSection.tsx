@@ -21,6 +21,7 @@ import BlockLogoWhite from './icons/block-lockup_white.png';
 import TelemetrySettings from './TelemetrySettings';
 import { trackSettingToggled } from '../../../utils/analytics';
 import type { LanguageSetting } from '../../../utils/settings';
+import { useWorkspace } from '../../../contexts/WorkspaceContext';
 
 const i18n = defineMessages({
   appearanceTitle: { id: 'settings.appearance.title', defaultMessage: 'Appearance' },
@@ -55,6 +56,15 @@ const i18n = defineMessages({
     id: 'settings.preventSleep.description',
     defaultMessage:
       'Keep your computer awake while goose is running a task (screen can still lock)',
+  },
+  swapPanelsTitle: {
+    id: 'settings.appearance.swapPanelsTitle',
+    defaultMessage: 'Swap chat and file explorer positions',
+  },
+  swapPanelsDesc: {
+    id: 'settings.appearance.swapPanelsDesc',
+    defaultMessage:
+      'By default, chat is on the left and files are on the right. When enabled, files appear on the left and chat on the right.',
   },
   costTracking: { id: 'settings.costTracking.title', defaultMessage: 'Cost Tracking' },
   costTrackingDesc: {
@@ -179,6 +189,7 @@ interface AppSettingsSectionProps {
 }
 
 export default function AppSettingsSection({ scrollToSection }: AppSettingsSectionProps) {
+  const { swapChatAndExplorer, setSwapChatAndExplorer } = useWorkspace();
   const [menuBarIconEnabled, setMenuBarIconEnabled] = useState(true);
   const [dockIconEnabled, setDockIconEnabled] = useState(true);
   const [wakelockEnabled, setWakelockEnabled] = useState(true);
@@ -294,6 +305,11 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
       setWakelockEnabled(newState);
       trackSettingToggled('prevent_sleep', newState);
     }
+  };
+
+  const handleSwapPanelsToggle = async (checked: boolean) => {
+    await setSwapChatAndExplorer(checked);
+    trackSettingToggled('swap_chat_and_explorer', checked);
   };
 
   const handleNotificationsToggle = async (checked: boolean) => {
@@ -440,6 +456,25 @@ export default function AppSettingsSection({ scrollToSection }: AppSettingsSecti
               <Switch
                 checked={wakelockEnabled}
                 onCheckedChange={handleWakelockToggle}
+                variant="mono"
+              />
+            </div>
+          </div>
+
+          {/* Swap Chat and File Explorer panel positions */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-text-primary text-xs">
+                {intl.formatMessage(i18n.swapPanelsTitle)}
+              </h3>
+              <p className="text-xs text-text-secondary max-w-md mt-[2px]">
+                {intl.formatMessage(i18n.swapPanelsDesc)}
+              </p>
+            </div>
+            <div className="flex items-center">
+              <Switch
+                checked={swapChatAndExplorer}
+                onCheckedChange={handleSwapPanelsToggle}
                 variant="mono"
               />
             </div>

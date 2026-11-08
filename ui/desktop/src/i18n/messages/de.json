@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "Konfigurieren Sie, wie goose auf Ihrem System angezeigt wird"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "Standardmäßig befindet sich der Chat links und die Dateien rechts. Wenn aktiviert, erscheinen die Dateien links und der Chat rechts."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Chat und Datei-Explorer austauschen"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Darstellung"
   },

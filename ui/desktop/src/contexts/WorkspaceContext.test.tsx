@@ -601,4 +601,39 @@ describe('WorkspaceContext', () => {
     expect(result.current.isChatVisible).toBe(true);
     expect(localStorage.getItem('goose_chat_visible')).toBe('true');
   });
+
+  it('loads swapChatAndExplorer from electron settings on mount', async () => {
+    (window.electron.getSetting as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (key: string) => Promise.resolve(key === 'swapChatAndExplorer')
+    );
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.swapChatAndExplorer).toBe(true);
+  });
+
+  it('defaults swapChatAndExplorer to false when no stored value exists', async () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.swapChatAndExplorer).toBe(false);
+  });
+
+  it('persists swapChatAndExplorer via electron settings', async () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    await act(async () => {
+      await result.current.setSwapChatAndExplorer(true);
+    });
+
+    expect(result.current.swapChatAndExplorer).toBe(true);
+    expect(window.electron.setSetting).toHaveBeenCalledWith('swapChatAndExplorer', true);
+  });
 });

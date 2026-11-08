@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "Konfigurasikan tampilan goose di sistem Anda"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "Secara bawaan, obrolan berada di kiri dan berkas di kanan. Saat diaktifkan, berkas tampil di kiri dan obrolan di kanan."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "Tukar posisi obrolan dan penjelajah berkas"
+  },
   "settings.appearance.title": {
     "defaultMessage": "Tampilan"
   },

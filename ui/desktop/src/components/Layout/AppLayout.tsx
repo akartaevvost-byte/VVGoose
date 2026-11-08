@@ -51,6 +51,37 @@ interface AppLayoutContentProps {
   liveVoice: LiveVoiceController;
 }
 
+interface PanelToggleButtonProps {
+  title: string;
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+const PanelToggleButton: React.FC<PanelToggleButtonProps> = ({
+  title,
+  active,
+  onClick,
+  children,
+}) => (
+  <Button
+    onClick={onClick}
+    onMouseDown={(e) => e.stopPropagation()}
+    className={cn(
+      'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
+      active
+        ? 'bg-background-tertiary text-text-primary shadow-xs'
+        : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
+    )}
+    variant="ghost"
+    size="xs"
+    title={title}
+    aria-label={title}
+  >
+    {children}
+  </Button>
+);
+
 const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liveVoice }) => {
   const intl = useIntl();
   const location = useLocation();
@@ -87,6 +118,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     setIsExplorerVisible,
     explorerWidth,
     setExplorerWidth,
+    swapChatAndExplorer,
   } = useWorkspace();
 
   const [isNavDragging, setIsNavDragging] = useState(false);
@@ -124,31 +156,35 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     };
   }, [setNavWidth]);
 
-  // Chat panel splitter resizing (Chat is on the left)
-  const isChatResizing = useRef(false);
-  const startChatX = useRef(0);
-  const startChatWidth = useRef(0);
+  // Splitter resizing by layout side: each splitter controls the width of
+  // whichever panel (chat or file explorer) currently occupies its side
+  const isLeftResizing = useRef(false);
+  const startLeftX = useRef(0);
+  const startLeftWidth = useRef(0);
 
-  const handleChatResizeMouseDown = useCallback(
+  const handleLeftResizeMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      isChatResizing.current = true;
-      startChatX.current = e.clientX;
-      startChatWidth.current = chatWidth;
+      isLeftResizing.current = true;
+      startLeftX.current = e.clientX;
+      startLeftWidth.current = swapChatAndExplorer ? explorerWidth : chatWidth;
       e.preventDefault();
     },
-    [chatWidth]
+    [swapChatAndExplorer, chatWidth, explorerWidth]
   );
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isChatResizing.current) return;
-      const delta = e.clientX - startChatX.current;
-      setChatWidth(startChatWidth.current + delta);
+      if (!isLeftResizing.current) return;
+      const delta = e.clientX - startLeftX.current;
+      const next = startLeftWidth.current + delta;
+      if (swapChatAndExplorer) {
+        setExplorerWidth(next);
+      } else {
+        setChatWidth(next);
+      }
     };
     const handleMouseUp = () => {
-      if (isChatResizing.current) {
-        isChatResizing.current = false;
-      }
+      isLeftResizing.current = false;
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -156,33 +192,35 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [setChatWidth]);
+  }, [swapChatAndExplorer, setChatWidth, setExplorerWidth]);
 
-  // File explorer splitter resizing (File explorer is on the right)
-  const isExplorerResizing = useRef(false);
-  const startExplorerX = useRef(0);
-  const startExplorerWidth = useRef(0);
+  const isRightResizing = useRef(false);
+  const startRightX = useRef(0);
+  const startRightWidth = useRef(0);
 
-  const handleExplorerResizeMouseDown = useCallback(
+  const handleRightResizeMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      isExplorerResizing.current = true;
-      startExplorerX.current = e.clientX;
-      startExplorerWidth.current = explorerWidth;
+      isRightResizing.current = true;
+      startRightX.current = e.clientX;
+      startRightWidth.current = swapChatAndExplorer ? chatWidth : explorerWidth;
       e.preventDefault();
     },
-    [explorerWidth]
+    [swapChatAndExplorer, chatWidth, explorerWidth]
   );
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isExplorerResizing.current) return;
-      const delta = e.clientX - startExplorerX.current;
-      setExplorerWidth(startExplorerWidth.current - delta);
+      if (!isRightResizing.current) return;
+      const delta = e.clientX - startRightX.current;
+      const next = startRightWidth.current - delta;
+      if (swapChatAndExplorer) {
+        setChatWidth(next);
+      } else {
+        setExplorerWidth(next);
+      }
     };
     const handleMouseUp = () => {
-      if (isExplorerResizing.current) {
-        isExplorerResizing.current = false;
-      }
+      isRightResizing.current = false;
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -190,7 +228,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [setExplorerWidth]);
+  }, [swapChatAndExplorer, setChatWidth, setExplorerWidth]);
 
   // Cmd+B / Ctrl+B to toggle navigation and sessions sidebar (isNavExpanded)
   useEffect(() => {
@@ -266,6 +304,109 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   const explorerShortcut = safeIsMacOS ? '⌘⇧E' : 'Ctrl+Shift+E';
   const explorerToggleTitle = `${intl.formatMessage(i18n.toggleExplorer)} (${explorerShortcut})`;
 
+  const chatToggleButton = (
+    <PanelToggleButton
+      title={chatToggleTitle}
+      active={isChatVisible}
+      onClick={() => setIsChatVisible((v) => !v)}
+    >
+      <MessageSquare
+        className={cn(
+          'w-4 h-4 pointer-events-none transition-colors',
+          isChatVisible && 'fill-current'
+        )}
+      />
+    </PanelToggleButton>
+  );
+  const editorToggleButton = (
+    <PanelToggleButton
+      title={editorToggleTitle}
+      active={isEditorVisible}
+      onClick={() => setIsEditorVisible((v) => !v)}
+    >
+      <PanelLayoutIcon position="center" isOpen={isEditorVisible} />
+    </PanelToggleButton>
+  );
+  const explorerToggleButton = (
+    <PanelToggleButton
+      title={explorerToggleTitle}
+      active={isExplorerVisible}
+      onClick={() => setIsExplorerVisible((v) => !v)}
+    >
+      <PanelLayoutIcon
+        position={swapChatAndExplorer ? 'left' : 'right'}
+        isOpen={isExplorerVisible}
+      />
+    </PanelToggleButton>
+  );
+
+  const isLeftPanelVisible = swapChatAndExplorer ? isExplorerVisible : isChatVisible;
+  const isRightPanelVisible = swapChatAndExplorer ? isChatVisible : isExplorerVisible;
+
+  const renderChatPanel = (side: 'left' | 'right') =>
+    isChatVisible ? (
+      <div
+        style={{ width: isEditorVisible || isExplorerVisible ? chatWidth : '100%' }}
+        className={cn(
+          'h-full p-2 pl-0 flex flex-col min-w-[300px]',
+          isEditorVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1',
+          side === 'right' && 'ml-auto'
+        )}
+      >
+        <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-border-primary bg-background-primary">
+          <ChatTabs sessionIds={activeSessions.map((session) => session.sessionId)} />
+          <div className="relative min-h-0 flex-1">
+            {isOnPairRoute ? (
+              <>
+                <Outlet />
+                <ChatSessionsContainer
+                  setChat={setChat}
+                  activeSessions={activeSessions}
+                  liveVoice={liveVoice}
+                />
+              </>
+            ) : (
+              <>
+                <Outlet />
+                <div className="hidden">
+                  <ChatSessionsContainer
+                    setChat={setChat}
+                    activeSessions={activeSessions}
+                    liveVoice={liveVoice}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div className="hidden">
+        <Outlet />
+        <ChatSessionsContainer
+          setChat={setChat}
+          activeSessions={activeSessions}
+          liveVoice={liveVoice}
+        />
+      </div>
+    );
+
+  const renderExplorerPanel = (side: 'left' | 'right') =>
+    isExplorerVisible && (
+      <div
+        style={{ width: isEditorVisible || isChatVisible ? explorerWidth : '100%' }}
+        className={cn(
+          'h-full p-2 pl-0 flex flex-col min-w-[200px]',
+          isEditorVisible || isChatVisible ? 'flex-shrink-0' : 'flex-1',
+          side === 'right' && 'ml-auto'
+        )}
+      >
+        <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
+          <FileExplorer />
+        </div>
+      </div>
+    );
+
   return (
     <div className="flex flex-col flex-1 w-full h-full relative animate-fade-in bg-background-primary overflow-hidden">
       {/* Workspace Top Header Bar */}
@@ -281,80 +422,32 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         {/* Right Section: Workspace & Layout toggles */}
         <div className="flex items-center gap-1 no-drag">
           {/* Left Panel (Navigation Sidebar) */}
-          <Button
-            onClick={() => setIsNavExpanded(!isNavExpanded)}
-            onMouseDown={(e) => e.stopPropagation()}
-            className={cn(
-              'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
-              isNavExpanded
-                ? 'bg-background-tertiary text-text-primary shadow-xs'
-                : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
-            )}
-            variant="ghost"
-            size="xs"
+          <PanelToggleButton
             title={navToggleTitle}
-            aria-label={navToggleTitle}
+            active={isNavExpanded}
+            onClick={() => setIsNavExpanded(!isNavExpanded)}
           >
             <PanelLayoutIcon position="left" isOpen={isNavExpanded} />
-          </Button>
+          </PanelToggleButton>
 
-          {/* Chat Window Toggle (Message icon), Center Panel (Editor) & Right Panel (Files) on Main Workspace Routes */}
+          {/* Panel visibility toggles on Main Workspace Routes, ordered to match
+              the physical panel positions (files left / chat right when swapped) */}
           {isMainWorkspaceRoute && (
             <>
               <div className="w-[1px] h-4 bg-border-primary/40 mx-0.5" />
-              <Button
-                onClick={() => setIsChatVisible((v) => !v)}
-                onMouseDown={(e) => e.stopPropagation()}
-                className={cn(
-                  'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
-                  isChatVisible
-                    ? 'bg-background-tertiary text-text-primary shadow-xs'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
-                )}
-                variant="ghost"
-                size="xs"
-                title={chatToggleTitle}
-                aria-label={chatToggleTitle}
-              >
-                <MessageSquare
-                  className={cn(
-                    'w-4 h-4 pointer-events-none transition-colors',
-                    isChatVisible && 'fill-current'
-                  )}
-                />
-              </Button>
-              <Button
-                onClick={() => setIsEditorVisible((v) => !v)}
-                onMouseDown={(e) => e.stopPropagation()}
-                className={cn(
-                  'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
-                  isEditorVisible
-                    ? 'bg-background-tertiary text-text-primary shadow-xs'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
-                )}
-                variant="ghost"
-                size="xs"
-                title={editorToggleTitle}
-                aria-label={editorToggleTitle}
-              >
-                <PanelLayoutIcon position="center" isOpen={isEditorVisible} />
-              </Button>
-              <Button
-                onClick={() => setIsExplorerVisible((v) => !v)}
-                onMouseDown={(e) => e.stopPropagation()}
-                className={cn(
-                  'no-drag h-7 w-7 p-0 flex items-center justify-center rounded-md transition-colors cursor-pointer',
-                  isExplorerVisible
-                    ? 'bg-background-tertiary text-text-primary shadow-xs'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-background-tertiary/60'
-                )}
-                variant="ghost"
-                size="xs"
-                title={explorerToggleTitle}
-                aria-label={explorerToggleTitle}
-              >
-                <PanelLayoutIcon position="right" isOpen={isExplorerVisible} />
-              </Button>
+              {swapChatAndExplorer ? (
+                <>
+                  {explorerToggleButton}
+                  {editorToggleButton}
+                  {chatToggleButton}
+                </>
+              ) : (
+                <>
+                  {chatToggleButton}
+                  {editorToggleButton}
+                  {explorerToggleButton}
+                </>
+              )}
             </>
           )}
         </div>
@@ -387,58 +480,14 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
         {/* Workspace 3-Panel or Standard Route View */}
         {isMainWorkspaceRoute ? (
           <div className="flex flex-1 w-full h-full min-h-0 flex-row overflow-hidden">
-            {/* Left Panel: Goose Agent Chat or Hub ("Новый чат") */}
-            {isChatVisible ? (
-              <div
-                style={{ width: isEditorVisible || isExplorerVisible ? chatWidth : '100%' }}
-                className={cn(
-                  'h-full p-2 pl-0 flex flex-col min-w-[300px]',
-                  isEditorVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1'
-                )}
-              >
-                <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-border-primary bg-background-primary">
-                  <ChatTabs sessionIds={activeSessions.map((session) => session.sessionId)} />
-                  <div className="relative min-h-0 flex-1">
-                    {isOnPairRoute ? (
-                      <>
-                        <Outlet />
-                        <ChatSessionsContainer
-                          setChat={setChat}
-                          activeSessions={activeSessions}
-                          liveVoice={liveVoice}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <Outlet />
-                        <div className="hidden">
-                          <ChatSessionsContainer
-                            setChat={setChat}
-                            activeSessions={activeSessions}
-                            liveVoice={liveVoice}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="hidden">
-                <Outlet />
-                <ChatSessionsContainer
-                  setChat={setChat}
-                  activeSessions={activeSessions}
-                  liveVoice={liveVoice}
-                />
-              </div>
-            )}
+            {/* Left Panel: chat by default, file explorer when panels are swapped */}
+            {swapChatAndExplorer ? renderExplorerPanel('left') : renderChatPanel('left')}
 
-            {/* Splitter between Chat/Hub and Center */}
-            {isChatVisible && (isEditorVisible || isExplorerVisible) && (
+            {/* Splitter between the left panel and the center */}
+            {isLeftPanelVisible && (isEditorVisible || isRightPanelVisible) && (
               <div
                 className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
-                onMouseDown={handleChatResizeMouseDown}
+                onMouseDown={handleLeftResizeMouseDown}
                 title="Перетащите для изменения ширины"
               />
             )}
@@ -455,30 +504,19 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
               </div>
             )}
 
-            {/* Splitter between Editor and File Explorer */}
-            {isEditorVisible && isExplorerVisible && (
+            {/* Splitter between the center and the right panel */}
+            {isEditorVisible && isRightPanelVisible && (
               <div
                 className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
-                onMouseDown={handleExplorerResizeMouseDown}
+                onMouseDown={handleRightResizeMouseDown}
                 title="Перетащите для изменения ширины"
               />
             )}
 
-            {/* Right Panel: File Explorer - pinned to the right window edge via
-                ml-auto so it never slides left when the center panel is hidden */}
-            {isExplorerVisible && (
-              <div
-                style={{ width: isEditorVisible || isChatVisible ? explorerWidth : '100%' }}
-                className={cn(
-                  'ml-auto h-full p-2 pl-0 flex flex-col min-w-[200px]',
-                  isEditorVisible || isChatVisible ? 'flex-shrink-0' : 'flex-1'
-                )}
-              >
-                <div className="w-full h-full overflow-hidden rounded-xl border border-border-primary bg-background-primary relative">
-                  <FileExplorer />
-                </div>
-              </div>
-            )}
+            {/* Right Panel: file explorer by default, chat when panels are
+                swapped - pinned to the right window edge via ml-auto so it
+                never slides left when the center panel is hidden */}
+            {swapChatAndExplorer ? renderChatPanel('right') : renderExplorerPanel('right')}
 
             {/* Empty state when all workspace panels are closed */}
             {!isChatVisible && !isEditorVisible && !isExplorerVisible && (
@@ -487,33 +525,67 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                   Все рабочие панели скрыты
                 </p>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => setIsChatVisible(true)}
-                    className="cursor-pointer"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                    Чат
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => setIsEditorVisible(true)}
-                    className="cursor-pointer"
-                  >
-                    <PanelLayoutIcon position="center" isOpen={true} className="mr-1.5" />
-                    Редактор
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => setIsExplorerVisible(true)}
-                    className="cursor-pointer"
-                  >
-                    <PanelLayoutIcon position="right" isOpen={true} className="mr-1.5" />
-                    Файлы
-                  </Button>
+                  {swapChatAndExplorer ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsExplorerVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <PanelLayoutIcon position="left" isOpen={true} className="mr-1.5" />
+                        Файлы
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsEditorVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <PanelLayoutIcon position="center" isOpen={true} className="mr-1.5" />
+                        Редактор
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsChatVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                        Чат
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsChatVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                        Чат
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsEditorVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <PanelLayoutIcon position="center" isOpen={true} className="mr-1.5" />
+                        Редактор
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsExplorerVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <PanelLayoutIcon position="right" isOpen={true} className="mr-1.5" />
+                        Файлы
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             )}

@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "시스템에서 goose가 표시되는 방식을 설정합니다."
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "기본적으로 채팅은 왼쪽에, 파일은 오른쪽에 표시됩니다. 활성화하면 파일이 왼쪽에, 채팅이 오른쪽에 표시됩니다."
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "채팅과 파일 탐색기 위치 바꾸기"
+  },
   "settings.appearance.title": {
     "defaultMessage": "모양"
   },

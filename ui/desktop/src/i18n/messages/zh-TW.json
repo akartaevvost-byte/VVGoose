@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "設定 goose 在您系統上的顯示方式"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "預設情況下，聊天位於左側，檔案位於右側。啟用後，檔案顯示在左側，聊天顯示在右側。"
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "交換聊天與檔案總管的位置"
+  },
   "settings.appearance.title": {
     "defaultMessage": "外觀"
   },

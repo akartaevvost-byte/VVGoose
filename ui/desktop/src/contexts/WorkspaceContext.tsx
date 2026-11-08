@@ -80,6 +80,8 @@ interface WorkspaceContextType {
   setIsExplorerVisible: React.Dispatch<React.SetStateAction<boolean>>;
   explorerWidth: number;
   setExplorerWidth: (value: number | ((prev: number) => number)) => void;
+  swapChatAndExplorer: boolean;
+  setSwapChatAndExplorer: (value: boolean) => Promise<void>;
   pendingDiff: ProposedFileDiff | null;
   setPendingDiff: React.Dispatch<React.SetStateAction<ProposedFileDiff | null>>;
   proposeDiff: (diff: Omit<ProposedFileDiff, 'diffStats'>) => Promise<void>;
@@ -281,6 +283,22 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       return clamped;
     });
+  }, []);
+
+  const [swapChatAndExplorer, setSwapChatAndExplorerState] = useState(false);
+
+  useEffect(() => {
+    window.electron
+      ?.getSetting?.('swapChatAndExplorer')
+      .then((value) => {
+        if (typeof value === 'boolean') setSwapChatAndExplorerState(value);
+      })
+      .catch(() => {});
+  }, []);
+
+  const setSwapChatAndExplorer = useCallback(async (value: boolean) => {
+    setSwapChatAndExplorerState(value);
+    await window.electron?.setSetting?.('swapChatAndExplorer', value);
   }, []);
 
   const refreshWorkspace = useCallback(() => {
@@ -1006,6 +1024,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setIsExplorerVisible,
       explorerWidth,
       setExplorerWidth,
+      swapChatAndExplorer,
+      setSwapChatAndExplorer,
       pendingDiff,
       setPendingDiff,
       proposeDiff,
@@ -1053,6 +1073,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setIsExplorerVisible,
       explorerWidth,
       setExplorerWidth,
+      swapChatAndExplorer,
+      setSwapChatAndExplorer,
       pendingDiff,
       setPendingDiff,
       proposeDiff,

@@ -3923,6 +3923,12 @@
   "settings.appearance.description": {
     "defaultMessage": "システム上でのgooseの表示を設定します"
   },
+  "settings.appearance.swapPanelsDesc": {
+    "defaultMessage": "デフォルトでは、チャットは左側に、ファイルは右側に表示されます。有効にすると、ファイルが左側に、チャットが右側に表示されます。"
+  },
+  "settings.appearance.swapPanelsTitle": {
+    "defaultMessage": "チャットとファイルエクスプローラーの位置を入れ替える"
+  },
   "settings.appearance.title": {
     "defaultMessage": "外観"
   },
