@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getTerminalTheme } from './TerminalTheme';
+import { colorToOscRgb, getTerminalTheme } from './TerminalTheme';
 
 describe('getTerminalTheme', () => {
   const originalMatchMedia = window.matchMedia;
@@ -104,5 +104,29 @@ describe('getTerminalTheme', () => {
     expect(theme.cyan).toBe('#1b7c83');
     expect(theme.white).toBe('#6e7781');
     expect(theme.brightWhite).toBe('#8c959f');
+  });
+});
+
+describe('colorToOscRgb', () => {
+  it('converts 6-digit hex colors to xterm 16-bit rgb format', () => {
+    expect(colorToOscRgb('#ffffff')).toBe('rgb:ffff/ffff/ffff');
+    expect(colorToOscRgb('#15141b')).toBe('rgb:1515/1414/1b1b');
+    expect(colorToOscRgb('#000000')).toBe('rgb:0000/0000/0000');
+  });
+
+  it('converts 3-digit hex colors to xterm 16-bit rgb format', () => {
+    expect(colorToOscRgb('#fff')).toBe('rgb:ffff/ffff/ffff');
+    expect(colorToOscRgb('#000')).toBe('rgb:0000/0000/0000');
+  });
+
+  it('converts rgb/rgba strings to xterm 16-bit rgb format', () => {
+    expect(colorToOscRgb('rgb(248, 248, 248)')).toBe('rgb:f8f8/f8f8/f8f8');
+    expect(colorToOscRgb('rgba(31, 35, 40, 0.9)')).toBe('rgb:1f1f/2323/2828');
+  });
+
+  it('returns null for empty or invalid colors', () => {
+    expect(colorToOscRgb('')).toBeNull();
+    expect(colorToOscRgb(undefined)).toBeNull();
+    expect(colorToOscRgb('invalid')).toBeNull();
   });
 });

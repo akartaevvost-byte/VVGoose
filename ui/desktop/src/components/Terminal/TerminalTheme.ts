@@ -1,5 +1,36 @@
 import type { ITheme } from '@xterm/xterm';
 
+export function colorToOscRgb(color?: string): string | null {
+  if (!color) return null;
+  const trimmed = color.trim().toLowerCase();
+
+  if (trimmed.startsWith('#')) {
+    const hex = trimmed.slice(1);
+    if (hex.length === 3) {
+      const r = hex[0] + hex[0];
+      const g = hex[1] + hex[1];
+      const b = hex[2] + hex[2];
+      return `rgb:${r}${r}/${g}${g}/${b}${b}`;
+    }
+    if (hex.length >= 6) {
+      const r = hex.slice(0, 2);
+      const g = hex.slice(2, 4);
+      const b = hex.slice(4, 6);
+      return `rgb:${r}${r}/${g}${g}/${b}${b}`;
+    }
+  }
+
+  const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    const r = Math.min(255, parseInt(rgbMatch[1], 10)).toString(16).padStart(2, '0');
+    const g = Math.min(255, parseInt(rgbMatch[2], 10)).toString(16).padStart(2, '0');
+    const b = Math.min(255, parseInt(rgbMatch[3], 10)).toString(16).padStart(2, '0');
+    return `rgb:${r}${r}/${g}${g}/${b}${b}`;
+  }
+
+  return null;
+}
+
 export function getTerminalTheme(): ITheme {
   if (typeof document === 'undefined') {
     return {

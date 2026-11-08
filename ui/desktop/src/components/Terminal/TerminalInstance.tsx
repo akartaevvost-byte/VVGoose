@@ -5,7 +5,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
-import { getTerminalTheme } from './TerminalTheme';
+import { colorToOscRgb, getTerminalTheme } from './TerminalTheme';
 import { TERMINAL_FONT_FAMILY } from './terminalFont';
 import { useTerminal } from '../../contexts/TerminalContext';
 
@@ -70,6 +70,41 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
     term.open(containerRef.current);
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    const sendOscColorResponse = (oscCode: number, color?: string) => {
+      if (!color) return;
+      const oscRgb = colorToOscRgb(color);
+      if (oscRgb && window?.electron?.terminalData) {
+        window.electron.terminalData(id, `\x1b]${oscCode};${oscRgb}\x1b\\`);
+      }
+    };
+
+    const osc10Disposable = term.parser?.registerOscHandler?.(10, (data) => {
+      if (data?.trim().startsWith('?')) {
+        const currentTheme = term.options.theme || getTerminalTheme();
+        sendOscColorResponse(10, currentTheme.foreground);
+        return true;
+      }
+      return false;
+    });
+
+    const osc11Disposable = term.parser?.registerOscHandler?.(11, (data) => {
+      if (data?.trim().startsWith('?')) {
+        const currentTheme = term.options.theme || getTerminalTheme();
+        sendOscColorResponse(11, currentTheme.background);
+        return true;
+      }
+      return false;
+    });
+
+    const osc12Disposable = term.parser?.registerOscHandler?.(12, (data) => {
+      if (data?.trim().startsWith('?')) {
+        const currentTheme = term.options.theme || getTerminalTheme();
+        sendOscColorResponse(12, currentTheme.cursor);
+        return true;
+      }
+      return false;
+    });
 
     // Connect @xterm/addon-webgl with error fallback and context loss handling
     let webglAddon: WebglAddon | null = null;
@@ -192,6 +227,9 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
       clearTimeout(initialTimer);
       themeObserver.disconnect();
       resizeObserver.disconnect();
+      osc10Disposable?.dispose();
+      osc11Disposable?.dispose();
+      osc12Disposable?.dispose();
       dataDisposable.dispose();
       cleanupData?.();
       cleanupExit?.();

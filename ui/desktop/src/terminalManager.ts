@@ -1,5 +1,5 @@
 import * as pty from 'node-pty';
-import { ipcMain, app } from 'electron';
+import { ipcMain, app, nativeTheme } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import log from './utils/logger';
@@ -29,7 +29,7 @@ export class TerminalManager {
     return ['-l'];
   }
 
-  async resolveEnvironment(): Promise<Record<string, string>> {
+  async resolveEnvironment(theme?: 'light' | 'dark'): Promise<Record<string, string>> {
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
       if (typeof value === 'string') {
@@ -39,6 +39,14 @@ export class TerminalManager {
 
     env.TERM = 'xterm-256color';
     env.COLORTERM = 'truecolor';
+
+    const isDark =
+      theme !== undefined
+        ? theme === 'dark'
+        : nativeTheme && 'shouldUseDarkColors' in nativeTheme
+          ? nativeTheme.shouldUseDarkColors
+          : false;
+    env.COLORFGBG = isDark ? '15;0' : '0;15';
 
     try {
       const loginShellPath = await getLoginShellPath(log);
@@ -79,7 +87,7 @@ export class TerminalManager {
       cwd = os.homedir();
     }
 
-    const env = await this.resolveEnvironment();
+    const env = await this.resolveEnvironment(options.theme);
 
     try {
       const ptyProcess = pty.spawn(shell, args, {

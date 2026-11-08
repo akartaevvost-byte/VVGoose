@@ -14,6 +14,7 @@ export interface TerminalCreateOptions {
   shell?: string;
   cols?: number;
   rows?: number;
+  theme?: 'light' | 'dark';
 }
 
 export interface TerminalContextType {

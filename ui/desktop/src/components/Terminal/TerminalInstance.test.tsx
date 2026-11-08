@@ -26,6 +26,9 @@ interface MockTerminalInstance {
       getLine: (idx: number) => { translateToString: (trimRight?: boolean) => string } | undefined;
     };
   };
+  parser?: {
+    registerOscHandler: ReturnType<typeof vi.fn>;
+  };
 }
 
 interface MockWebglInstance {
@@ -72,6 +75,11 @@ vi.mock('@xterm/xterm', () => ({
               idx === 0 ? 'output line 1' : 'output line 2',
           })),
         },
+      },
+      parser: {
+        registerOscHandler: vi.fn((_ident: number, _cb: (data: string) => boolean) => ({
+          dispose: vi.fn(),
+        })),
       },
     };
     terminalInstances.push(instance);
@@ -165,6 +173,14 @@ describe('TerminalInstance', () => {
 
     document.documentElement.className = '';
     document.documentElement.removeAttribute('data-theme');
+
+    window.electron = {
+      ...(window.electron || {}),
+      terminalData: vi.fn(),
+      terminalResize: vi.fn(),
+      onTerminalData: vi.fn(() => () => {}),
+      onTerminalExit: vi.fn(() => () => {}),
+    } as unknown as typeof window.electron;
   });
 
   afterEach(() => {
@@ -343,6 +359,56 @@ describe('TerminalInstance', () => {
       // When user highlights text, returns selection
       termInstance.getSelection.mockReturnValueOnce('user highlighted error');
       expect(getter()).toBe('user highlighted error');
+    });
+  });
+
+  describe('OSC color query handling', () => {
+    it('registers OSC 10, 11, and 12 handlers and responds to color queries', () => {
+      const handlers = new Map<number, (data: string) => boolean>();
+
+      render(<TerminalInstance id="term-osc" active={true} />);
+
+      const renderedTerm = terminalInstances[terminalInstances.length - 1];
+      expect(renderedTerm.parser?.registerOscHandler).toHaveBeenCalledWith(
+        10,
+        expect.any(Function)
+      );
+      expect(renderedTerm.parser?.registerOscHandler).toHaveBeenCalledWith(
+        11,
+        expect.any(Function)
+      );
+      expect(renderedTerm.parser?.registerOscHandler).toHaveBeenCalledWith(
+        12,
+        expect.any(Function)
+      );
+
+      const calls = (renderedTerm.parser?.registerOscHandler as any).mock.calls;
+      for (const [code, handler] of calls) {
+        handlers.set(code, handler);
+      }
+
+      // Query OSC 11 (background color)
+      const osc11Handler = handlers.get(11);
+      expect(osc11Handler).toBeDefined();
+      const handled11 = osc11Handler!('?');
+      expect(handled11).toBe(true);
+      expect(window.electron.terminalData).toHaveBeenCalledWith(
+        'term-osc',
+        expect.stringMatching(/^\x1b\]11;rgb:[0-9a-f]{4}\/[0-9a-f]{4}\/[0-9a-f]{4}\x1b\\$/)
+      );
+
+      // Query OSC 10 (foreground color)
+      const osc10Handler = handlers.get(10);
+      expect(osc10Handler).toBeDefined();
+      const handled10 = osc10Handler!('?');
+      expect(handled10).toBe(true);
+      expect(window.electron.terminalData).toHaveBeenCalledWith(
+        'term-osc',
+        expect.stringMatching(/^\x1b\]10;rgb:[0-9a-f]{4}\/[0-9a-f]{4}\/[0-9a-f]{4}\x1b\\$/)
+      );
+
+      // Non-query data should return false
+      expect(osc11Handler!('#000000')).toBe(false);
     });
   });
 });

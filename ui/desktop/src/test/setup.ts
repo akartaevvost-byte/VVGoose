@@ -18,6 +18,9 @@ vi.mock('electron', () => ({
     on: vi.fn(),
     off: vi.fn(),
   },
+  nativeTheme: {
+    shouldUseDarkColors: false,
+  },
 }));
 
 // This is the standard set up to ensure that React Testing Library's

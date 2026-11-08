@@ -40,11 +40,17 @@ describe('TerminalManager', () => {
     expect(manager.getDefaultShell()).toBe('powershell.exe');
   });
 
-  it('resolves environment variables with terminal capabilities', async () => {
-    const env = await manager.resolveEnvironment();
-    expect(env.TERM).toBe('xterm-256color');
-    expect(env.COLORTERM).toBe('truecolor');
-    expect(env.PATH).toBeDefined();
+  it('resolves environment variables with terminal capabilities and COLORFGBG', async () => {
+    const defaultEnv = await manager.resolveEnvironment();
+    expect(defaultEnv.TERM).toBe('xterm-256color');
+    expect(defaultEnv.COLORTERM).toBe('truecolor');
+    expect(defaultEnv.PATH).toBeDefined();
+
+    const lightEnv = await manager.resolveEnvironment('light');
+    expect(lightEnv.COLORFGBG).toBe('0;15');
+
+    const darkEnv = await manager.resolveEnvironment('dark');
+    expect(darkEnv.COLORFGBG).toBe('15;0');
   });
 
   it('spawns a PTY process and stores session', async () => {

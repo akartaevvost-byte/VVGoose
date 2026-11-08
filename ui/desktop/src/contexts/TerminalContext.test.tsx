@@ -64,6 +64,7 @@ describe('TerminalContext', () => {
     expect(window.electron.terminalCreate).toHaveBeenCalledWith({
       id,
       cwd: '/mock/workspace/path',
+      theme: 'light',
     });
   });
 

@@ -142,7 +142,16 @@ export const TerminalProvider: React.FC<TerminalProviderProps> = ({ children }) 
       setIsTerminalVisible(true);
 
       if (window?.electron?.terminalCreate) {
-        window.electron.terminalCreate({ id, cwd: targetCwd }).catch((err) => {
+        const isAura = document.documentElement.getAttribute('data-theme') === 'aura';
+        const isDark =
+          document.documentElement.classList.contains('dark') ||
+          document.documentElement.getAttribute('data-theme') === 'dark' ||
+          (!isAura &&
+            typeof window !== 'undefined' &&
+            window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+        const theme: 'light' | 'dark' = isDark || isAura ? 'dark' : 'light';
+
+        window.electron.terminalCreate({ id, cwd: targetCwd, theme }).catch((err) => {
           console.error(`Failed to create terminal session ${id}:`, err);
         });
       }
