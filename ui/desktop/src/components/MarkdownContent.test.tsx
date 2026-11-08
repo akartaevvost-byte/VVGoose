@@ -207,6 +207,18 @@ console.log('Hello, World!');
       // get, since it now renders through the shared CodeBlock component.
       expect(preElements[0].querySelector('[data-testid="copy-icon"]')).toBeInTheDocument();
     });
+
+    it('renders Run in Terminal button for shell code blocks', async () => {
+      const content = `\`\`\`bash
+echo "running tests"
+\`\`\``;
+
+      renderWithIntl(<MarkdownContent content={content} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Run in Terminal' })).toBeInTheDocument();
+      });
+    });
   });
 
   describe('Markdown Features', () => {

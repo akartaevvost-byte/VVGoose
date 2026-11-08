@@ -11,6 +11,7 @@ import type {
   WorkspaceFileNode,
   WorkspaceOperationResult,
 } from './types/fileSystem';
+import type { TerminalCreateOptions } from './types/terminal';
 
 // Mapping from settings keys to their old localStorage keys for lazy migration
 const localStorageKeyMap: Partial<Record<SettingKey, string>> = {
@@ -229,6 +230,20 @@ type ElectronAPI = {
   getGitBranchInfo: (dir: string) => Promise<{ branch: string } | null>;
   listGitBranches: (dir: string) => Promise<string[]>;
   switchGitBranch: (dir: string, branch: string) => Promise<{ success: boolean; error?: string }>;
+  terminalCreate: (options: TerminalCreateOptions) => Promise<{ success: boolean }>;
+  terminalData: (id: string, data: string) => void;
+  terminalResize: (id: string, cols: number, rows: number) => void;
+  terminalKill: (id: string) => Promise<boolean>;
+  onTerminalData: (id: string, callback: (data: string) => void) => () => void;
+  onTerminalExit: (id: string, callback: (exitCode: number) => void) => () => void;
+  terminal: {
+    create: (options: TerminalCreateOptions) => Promise<{ success: boolean }>;
+    sendData: (id: string, data: string) => void;
+    resize: (id: string, cols: number, rows: number) => void;
+    kill: (id: string) => Promise<boolean>;
+    onData: (id: string, callback: (data: string) => void) => () => void;
+    onExit: (id: string, callback: (exitCode: number) => void) => () => void;
+  };
 };
 
 type AppConfigAPI = {
@@ -437,6 +452,64 @@ const electronAPI: ElectronAPI = {
   listGitBranches: (dir: string) => ipcRenderer.invoke('list-git-branches', dir),
   switchGitBranch: (dir: string, branch: string) =>
     ipcRenderer.invoke('switch-git-branch', dir, branch),
+  terminalCreate: (options: TerminalCreateOptions) =>
+    ipcRenderer.invoke('terminal:create', options),
+  terminalData: (id: string, data: string) =>
+    ipcRenderer.send('terminal:data', id, data),
+  terminalResize: (id: string, cols: number, rows: number) =>
+    ipcRenderer.send('terminal:resize', id, cols, rows),
+  terminalKill: (id: string) =>
+    ipcRenderer.invoke('terminal:kill', id),
+  onTerminalData: (id: string, callback: (data: string) => void) => {
+    const channel = `terminal:data:${id}`;
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+      callback(String(data));
+    };
+    ipcRenderer.on(channel, handler);
+    return () => {
+      ipcRenderer.removeListener(channel, handler);
+    };
+  },
+  onTerminalExit: (id: string, callback: (exitCode: number) => void) => {
+    const channel = `terminal:exit:${id}`;
+    const handler = (_event: Electron.IpcRendererEvent, exitCode: unknown) => {
+      callback(typeof exitCode === 'number' ? exitCode : 0);
+    };
+    ipcRenderer.on(channel, handler);
+    return () => {
+      ipcRenderer.removeListener(channel, handler);
+    };
+  },
+  terminal: {
+    create: (options: TerminalCreateOptions) =>
+      ipcRenderer.invoke('terminal:create', options),
+    sendData: (id: string, data: string) =>
+      ipcRenderer.send('terminal:data', id, data),
+    resize: (id: string, cols: number, rows: number) =>
+      ipcRenderer.send('terminal:resize', id, cols, rows),
+    kill: (id: string) =>
+      ipcRenderer.invoke('terminal:kill', id),
+    onData: (id: string, callback: (data: string) => void) => {
+      const channel = `terminal:data:${id}`;
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        callback(String(data));
+      };
+      ipcRenderer.on(channel, handler);
+      return () => {
+        ipcRenderer.removeListener(channel, handler);
+      };
+    },
+    onExit: (id: string, callback: (exitCode: number) => void) => {
+      const channel = `terminal:exit:${id}`;
+      const handler = (_event: Electron.IpcRendererEvent, exitCode: unknown) => {
+        callback(typeof exitCode === 'number' ? exitCode : 0);
+      };
+      ipcRenderer.on(channel, handler);
+      return () => {
+        ipcRenderer.removeListener(channel, handler);
+      };
+    },
+  },
 };
 
 function getAppLocale(): unknown {

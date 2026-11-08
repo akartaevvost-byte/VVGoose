@@ -125,6 +125,17 @@ export default function BaseChat({
   const conversationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const handleAppendToChat = (e: Event) => {
+      const customEvent = e as CustomEvent<{ text: string }>;
+      if (customEvent.detail?.text) {
+        setPendingQuote(customEvent.detail.text);
+      }
+    };
+    window.addEventListener('goose:append-to-chat', handleAppendToChat);
+    return () => window.removeEventListener('goose:append-to-chat', handleAppendToChat);
+  }, []);
+
+  useEffect(() => {
     const handleMouseUp = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || !sel.toString().trim()) {

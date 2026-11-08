@@ -2,15 +2,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IpcRendererEvent } from 'electron';
 import { Outlet, useLocation } from 'react-router';
 import { motion } from 'framer-motion';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Terminal } from 'lucide-react';
 import { defineMessages, useIntl } from '../../i18n';
 import { Button } from '../ui/button';
 import ChatSessionsContainer from '../ChatSessionsContainer';
 import { useChatContext } from '../../contexts/ChatContext';
 import { NavigationProvider, useNavigationContext } from './NavigationContext';
 import { WorkspaceProvider, useWorkspace } from '../../contexts/WorkspaceContext';
+import { TerminalProvider, useTerminal } from '../../contexts/TerminalContext';
 import { Navigation } from './NavigationPanel';
 import { EditorArea } from '../Editor/EditorArea';
+import { TerminalPanel } from '../Terminal/TerminalPanel';
 import { ChatTabs } from './ChatTabs';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { PanelLayoutIcon } from './PanelLayoutIcon';
@@ -39,6 +41,10 @@ const i18n = defineMessages({
   toggleExplorer: {
     id: 'appLayout.toggleExplorer',
     defaultMessage: 'Toggle File Explorer',
+  },
+  toggleTerminal: {
+    id: 'appLayout.toggleTerminal',
+    defaultMessage: 'Toggle terminal',
   },
 });
 
@@ -120,6 +126,47 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
     setExplorerWidth,
     swapChatAndExplorer,
   } = useWorkspace();
+
+  const {
+    isTerminalVisible,
+    setIsTerminalVisible,
+    terminalHeight,
+    setTerminalHeight,
+    isMaximized,
+    toggleTerminal,
+    createTerminal,
+  } = useTerminal();
+
+  const isTerminalResizing = useRef(false);
+  const startTerminalY = useRef(0);
+  const startTerminalHeight = useRef(0);
+
+  const handleTerminalResizeMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      isTerminalResizing.current = true;
+      startTerminalY.current = e.clientY;
+      startTerminalHeight.current = terminalHeight;
+      e.preventDefault();
+    },
+    [terminalHeight]
+  );
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isTerminalResizing.current) return;
+      const deltaY = startTerminalY.current - e.clientY;
+      setTerminalHeight(startTerminalHeight.current + deltaY);
+    };
+    const handleMouseUp = () => {
+      isTerminalResizing.current = false;
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [setTerminalHeight]);
 
   const [isNavDragging, setIsNavDragging] = useState(false);
   const isNavResizing = useRef(false);
@@ -267,11 +314,21 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
       if (isModifier && e.shiftKey && (e.key.toLowerCase() === 'e' || e.code === 'KeyE')) {
         e.preventDefault();
         setIsExplorerVisible((v) => !v);
+        return;
+      }
+
+      if (isModifier && (e.key === '`' || e.code === 'Backquote')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          createTerminal();
+        } else {
+          toggleTerminal();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setIsChatVisible, setIsExplorerVisible]);
+  }, [setIsChatVisible, setIsExplorerVisible, toggleTerminal, createTerminal]);
 
   if (!chatContext) {
     throw new Error('AppLayoutContent must be used within ChatProvider');
@@ -339,17 +396,34 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
       />
     </PanelToggleButton>
   );
+  const terminalShortcut = safeIsMacOS ? '⌘`' : 'Ctrl+`';
+  const terminalToggleTitle = `${intl.formatMessage(i18n.toggleTerminal)} (${terminalShortcut})`;
+  const terminalToggleButton = (
+    <PanelToggleButton
+      title={terminalToggleTitle}
+      active={isTerminalVisible}
+      onClick={toggleTerminal}
+    >
+      <Terminal
+        className={cn(
+          'w-4 h-4 pointer-events-none transition-colors',
+          isTerminalVisible && 'text-text-primary'
+        )}
+      />
+    </PanelToggleButton>
+  );
 
   const isLeftPanelVisible = swapChatAndExplorer ? isExplorerVisible : isChatVisible;
   const isRightPanelVisible = swapChatAndExplorer ? isChatVisible : isExplorerVisible;
+  const isCenterVisible = isEditorVisible || isTerminalVisible;
 
   const renderChatPanel = (side: 'left' | 'right') =>
     isChatVisible ? (
       <div
-        style={{ width: isEditorVisible || isExplorerVisible ? chatWidth : '100%' }}
+        style={{ width: isCenterVisible || isExplorerVisible ? chatWidth : '100%' }}
         className={cn(
           'h-full p-2 pl-0 flex flex-col min-w-[300px]',
-          isEditorVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1',
+          isCenterVisible || isExplorerVisible ? 'flex-shrink-0' : 'flex-1',
           side === 'right' && 'ml-auto'
         )}
       >
@@ -394,10 +468,10 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
   const renderExplorerPanel = (side: 'left' | 'right') =>
     isExplorerVisible && (
       <div
-        style={{ width: isEditorVisible || isChatVisible ? explorerWidth : '100%' }}
+        style={{ width: isCenterVisible || isChatVisible ? explorerWidth : '100%' }}
         className={cn(
           'h-full p-2 pl-0 flex flex-col min-w-[200px]',
-          isEditorVisible || isChatVisible ? 'flex-shrink-0' : 'flex-1',
+          isCenterVisible || isChatVisible ? 'flex-shrink-0' : 'flex-1',
           side === 'right' && 'ml-auto'
         )}
       >
@@ -439,12 +513,14 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                 <>
                   {explorerToggleButton}
                   {editorToggleButton}
+                  {terminalToggleButton}
                   {chatToggleButton}
                 </>
               ) : (
                 <>
                   {chatToggleButton}
                   {editorToggleButton}
+                  {terminalToggleButton}
                   {explorerToggleButton}
                 </>
               )}
@@ -484,7 +560,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
             {swapChatAndExplorer ? renderExplorerPanel('left') : renderChatPanel('left')}
 
             {/* Splitter between the left panel and the center */}
-            {isLeftPanelVisible && (isEditorVisible || isRightPanelVisible) && (
+            {isLeftPanelVisible && (isCenterVisible || isRightPanelVisible) && (
               <div
                 className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
                 onMouseDown={handleLeftResizeMouseDown}
@@ -492,20 +568,44 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
               />
             )}
 
-            {/* Center Panel: Editor Area */}
-            {isEditorVisible && (
+            {/* Center Panel: Editor Area + Terminal Dock */}
+            {isCenterVisible && (
               <div
                 className={cn(
-                  'h-full p-2 pl-0 flex flex-col min-w-[300px]',
+                  'h-full p-2 pl-0 flex flex-col min-w-[300px] overflow-hidden',
                   isExplorerVisible || isChatVisible ? 'flex-1' : 'flex-1 w-full'
                 )}
               >
-                <EditorArea />
+                {isEditorVisible && !isMaximized && (
+                  <div className={cn('min-h-0', isTerminalVisible ? 'flex-1' : 'h-full')}>
+                    <EditorArea />
+                  </div>
+                )}
+
+                {isEditorVisible && isTerminalVisible && !isMaximized && (
+                  <div
+                    className="h-1.5 w-full cursor-row-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
+                    onMouseDown={handleTerminalResizeMouseDown}
+                    title="Перетащите для изменения высоты"
+                  />
+                )}
+
+                {isTerminalVisible && (
+                  <div
+                    style={isEditorVisible && !isMaximized ? { height: terminalHeight } : undefined}
+                    className={cn(
+                      'w-full flex-shrink-0 min-h-0',
+                      (!isEditorVisible || isMaximized) && 'flex-1 h-full'
+                    )}
+                  >
+                    <TerminalPanel />
+                  </div>
+                )}
               </div>
             )}
 
             {/* Splitter between the center and the right panel */}
-            {isEditorVisible && isRightPanelVisible && (
+            {isCenterVisible && isRightPanelVisible && (
               <div
                 className="w-1.5 h-full cursor-col-resize hover:bg-border-primary/40 active:bg-goose-teal/40 transition-colors flex-shrink-0"
                 onMouseDown={handleRightResizeMouseDown}
@@ -519,7 +619,7 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
             {swapChatAndExplorer ? renderChatPanel('right') : renderExplorerPanel('right')}
 
             {/* Empty state when all workspace panels are closed */}
-            {!isChatVisible && !isEditorVisible && !isExplorerVisible && (
+            {!isChatVisible && !isEditorVisible && !isExplorerVisible && !isTerminalVisible && (
               <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-text-secondary select-none">
                 <p className="text-sm font-medium mb-3 text-text-primary">
                   Все рабочие панели скрыты
@@ -544,6 +644,15 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                       >
                         <PanelLayoutIcon position="center" isOpen={true} className="mr-1.5" />
                         Редактор
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsTerminalVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <Terminal className="w-3.5 h-3.5 mr-1.5" />
+                        Терминал
                       </Button>
                       <Button
                         variant="outline"
@@ -574,6 +683,15 @@ const AppLayoutContent: React.FC<AppLayoutContentProps> = ({ activeSessions, liv
                       >
                         <PanelLayoutIcon position="center" isOpen={true} className="mr-1.5" />
                         Редактор
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setIsTerminalVisible(true)}
+                        className="cursor-pointer"
+                      >
+                        <Terminal className="w-3.5 h-3.5 mr-1.5" />
+                        Терминал
                       </Button>
                       <Button
                         variant="outline"
@@ -622,7 +740,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeSessions, liveVoice 
   return (
     <NavigationProvider>
       <WorkspaceProvider>
-        <AppLayoutContent activeSessions={activeSessions} liveVoice={liveVoice} />
+        <TerminalProvider>
+          <AppLayoutContent activeSessions={activeSessions} liveVoice={liveVoice} />
+        </TerminalProvider>
       </WorkspaceProvider>
     </NavigationProvider>
   );

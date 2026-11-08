@@ -27,6 +27,8 @@ const customOneDarkTheme = {
 };
 
 import { Check, Copy } from './icons';
+import { Terminal } from 'lucide-react';
+import { useOptionalTerminal } from '../contexts/TerminalContext';
 import { wrapHTMLInCodeBlock } from '../utils/htmlSecurity';
 import { BLOCKED_PROTOCOLS } from '../utils/urlSecurity';
 import { getTextDirection } from '../utils/textDirection';
@@ -143,7 +145,18 @@ const CodeBlock = memo(function CodeBlock({
 }) {
   const intl = useIntl();
   const [copied, setCopied] = useState(false);
+  const [ran, setRan] = useState(false);
   const timeoutRef = useRef<number | null>(null);
+  const terminal = useOptionalTerminal();
+  const isShell = /^(bash|sh|zsh|shell)$/i.test(language.trim());
+
+  const handleRunInTerminal = () => {
+    if (terminal) {
+      terminal.runCommand(children);
+      setRan(true);
+      window.setTimeout(() => setRan(false), 2000);
+    }
+  };
 
   const handleCopy = async () => {
     try {
@@ -210,15 +223,34 @@ const CodeBlock = memo(function CodeBlock({
 
   return (
     <div className="relative group w-full" dir="ltr">
-      <button
-        onClick={handleCopy}
-        className="absolute right-2 bottom-2 p-1.5 rounded-lg bg-gray-700/50 text-gray-300 font-sans text-sm
-                 opacity-0 group-hover:opacity-100 transition-opacity duration-200
-                 hover:bg-gray-600/50 hover:text-gray-100 z-10"
-        title={intl.formatMessage(i18n.copyCode)}
-      >
-        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-      </button>
+      <div className="absolute right-2 bottom-2 flex items-center gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        {isShell && (
+          <button
+            type="button"
+            onClick={handleRunInTerminal}
+            className="p-1.5 rounded-lg bg-gray-700/50 text-gray-300 font-sans text-sm
+                     hover:bg-gray-600/50 hover:text-gray-100 cursor-pointer"
+            title={ran ? 'Sent to terminal' : 'Run in Terminal'}
+            aria-label="Run in Terminal"
+          >
+            {ran ? (
+              <Check className="h-4 w-4 text-emerald-400" />
+            ) : (
+              <Terminal className="h-4 w-4" />
+            )}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="p-1.5 rounded-lg bg-gray-700/50 text-gray-300 font-sans text-sm
+                   hover:bg-gray-600/50 hover:text-gray-100 cursor-pointer"
+          title={intl.formatMessage(i18n.copyCode)}
+          aria-label={intl.formatMessage(i18n.copyCode)}
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        </button>
+      </div>
       <div className="w-full overflow-x-auto">{memoizedSyntaxHighlighter}</div>
     </div>
   );

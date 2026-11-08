@@ -74,11 +74,12 @@ export const TabStrip: React.FC<TabStripProps> = ({
     if (!container) return;
 
     measureEdges();
-    const observer = new ResizeObserver(() => measureEdges());
-    observer.observe(container);
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => measureEdges()) : null;
+    observer?.observe(container);
     container.addEventListener('scroll', measureEdges);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       container.removeEventListener('scroll', measureEdges);
     };
   }, [children, measureEdges]);

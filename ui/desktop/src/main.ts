@@ -86,6 +86,7 @@ import {
   getWorkspaceGitStatuses,
   workspaceWatcherManager,
 } from './workspaceFileService';
+import { registerTerminalIpcHandlers } from './terminalManager';
 import { getWindowIconFilename } from './utils/windowIcon';
 
 const windowIconPath = path.join(__dirname, '../images', getWindowIconFilename(process.platform));
@@ -2736,6 +2737,7 @@ async function appMain() {
   await ensureWinShims();
 
   registerUpdateIpcHandlers();
+  registerTerminalIpcHandlers();
 
   // Handle microphone permission requests
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {

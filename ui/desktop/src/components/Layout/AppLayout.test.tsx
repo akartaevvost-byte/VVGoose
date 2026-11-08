@@ -22,6 +22,10 @@ vi.mock('../FileExplorer/FileExplorer', () => ({
   FileExplorer: () => <div data-testid="file-explorer">FileExplorer</div>,
 }));
 
+vi.mock('../Terminal/TerminalPanel', () => ({
+  TerminalPanel: () => <div data-testid="terminal-panel">TerminalPanel</div>,
+}));
+
 vi.mock('./NavigationPanel', () => ({
   Navigation: () => <div data-testid="navigation-panel">Navigation</div>,
 }));
@@ -255,6 +259,32 @@ describe('AppLayout 3-panel layout', () => {
     const chatContainerRestored = screen.getByTestId('chat-sessions-container');
     expect(chatContainerRestored.parentElement?.parentElement?.style.display).not.toBe('none');
   });
+
+  it('toggles terminal panel using header button', () => {
+    renderWithProviders('/pair');
+
+    expect(screen.queryByTestId('terminal-panel')).toBeNull();
+
+    const terminalToggle = screen.getByTitle('Toggle terminal (⌘`)');
+    fireEvent.click(terminalToggle);
+
+    expect(screen.getByTestId('terminal-panel')).toBeDefined();
+
+    fireEvent.click(terminalToggle);
+    expect(screen.queryByTestId('terminal-panel')).toBeNull();
+  });
+
+  it('toggles terminal panel using Cmd+` shortcut', () => {
+    renderWithProviders('/pair');
+
+    expect(screen.queryByTestId('terminal-panel')).toBeNull();
+
+    fireEvent.keyDown(window, { key: '`', metaKey: true });
+    expect(screen.getByTestId('terminal-panel')).toBeDefined();
+
+    fireEvent.keyDown(window, { key: '`', metaKey: true });
+    expect(screen.queryByTestId('terminal-panel')).toBeNull();
+  });
 });
 
 describe('AppLayout swapChatAndExplorer layout', () => {
@@ -265,7 +295,7 @@ describe('AppLayout swapChatAndExplorer layout', () => {
     muted: false,
     start: vi.fn(),
     stop: vi.fn(),
-    toggleMuted: vi.fn(),
+    toggleMute: vi.fn(),
   };
 
   const mockChat = {
