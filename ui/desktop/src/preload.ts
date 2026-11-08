@@ -1,4 +1,5 @@
 import Electron, { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { SessionListChange } from './types/sessionListSync';
 import { Recipe } from './recipe';
 import type { GooseApp } from './types/apps';
 import type { Settings, SettingKey } from './utils/settings';
@@ -201,6 +202,8 @@ type ElectronAPI = {
   onModelAndProviderChange?: (
     callback: (data: { provider: string; model: string }) => void
   ) => () => void;
+  broadcastSessionListChange?: (change: SessionListChange) => void;
+  onSessionListChange?: (callback: (change: SessionListChange) => void) => () => void;
   openExternal: (url: string) => Promise<OpenExternalUrlResult>;
   // Update-related functions
   getVersion: () => string;
@@ -374,6 +377,18 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('model-and-provider-changed', handler);
     return () => {
       ipcRenderer.removeListener('model-and-provider-changed', handler);
+    };
+  },
+  broadcastSessionListChange: (change: SessionListChange) => {
+    ipcRenderer.send('broadcast-session-list-change', change);
+  },
+  onSessionListChange: (callback: (change: SessionListChange) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, change: unknown) => {
+      callback(change as SessionListChange);
+    };
+    ipcRenderer.on('session-list-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('session-list-changed', handler);
     };
   },
   openExternal: (url: string): Promise<OpenExternalUrlResult> => {

@@ -374,8 +374,8 @@ pub(crate) struct SessionListPage {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum SessionArchivedFilter {
-    #[default]
     Any,
+    #[default]
     Active,
     Archived,
 }
@@ -544,6 +544,7 @@ impl SessionManager {
             .list_sessions_matching(SessionListQuery {
                 filters: SessionListFilters {
                     types: Some(&[SessionType::User, SessionType::Scheduled]),
+                    archived: SessionArchivedFilter::Active,
                     ..Default::default()
                 },
                 limit: Some(limit),
@@ -553,7 +554,9 @@ impl SessionManager {
     }
 
     pub async fn list_sessions_by_types(&self, types: &[SessionType]) -> Result<Vec<Session>> {
-        self.storage.list_sessions_by_types(Some(types)).await
+        self.storage
+            .list_sessions_by_types(Some(types), SessionArchivedFilter::Active)
+            .await
     }
 
     pub(crate) async fn list_sessions_paged(
@@ -564,7 +567,9 @@ impl SessionManager {
     }
 
     pub async fn list_all_sessions(&self) -> Result<Vec<Session>> {
-        self.storage.list_sessions_by_types(None).await
+        self.storage
+            .list_sessions_by_types(None, SessionArchivedFilter::Any)
+            .await
     }
 
     pub async fn delete_session(&self, id: &str) -> Result<()> {
@@ -2485,10 +2490,15 @@ impl SessionStorage {
         Ok(())
     }
 
-    async fn list_sessions_by_types(&self, types: Option<&[SessionType]>) -> Result<Vec<Session>> {
+    async fn list_sessions_by_types(
+        &self,
+        types: Option<&[SessionType]>,
+        archived: SessionArchivedFilter,
+    ) -> Result<Vec<Session>> {
         self.list_sessions_matching(SessionListQuery {
             filters: SessionListFilters {
                 types,
+                archived,
                 ..Default::default()
             },
             ..Default::default()
@@ -2541,8 +2551,11 @@ impl SessionStorage {
     }
 
     async fn list_sessions(&self) -> Result<Vec<Session>> {
-        self.list_sessions_by_types(Some(&[SessionType::User, SessionType::Scheduled]))
-            .await
+        self.list_sessions_by_types(
+            Some(&[SessionType::User, SessionType::Scheduled]),
+            SessionArchivedFilter::Active,
+        )
+        .await
     }
 
     async fn delete_session(&self, session_id: &str) -> Result<()> {
@@ -4581,6 +4594,34 @@ mod tests {
         let mut expected_any = vec![active, archived];
         expected_any.sort();
         assert_eq!(any_ids, expected_any);
+    }
+
+    #[tokio::test]
+    async fn test_limited_session_list_hides_archived_sessions() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let active = create_session_for_list(&sm, "/tmp/session-list", true).await;
+        let archived = create_session_for_list(&sm, "/tmp/session-list", true).await;
+        sm.update(&archived)
+            .archived_at(Some(Utc::now()))
+            .apply()
+            .await
+            .unwrap();
+
+        let limited = sm.list_sessions_with_limit(10).await.unwrap();
+        assert_eq!(
+            limited
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![active.as_str()]
+        );
+        assert!(sm
+            .list_all_sessions()
+            .await
+            .unwrap()
+            .iter()
+            .any(|session| session.id == archived));
     }
 
     #[tokio::test]

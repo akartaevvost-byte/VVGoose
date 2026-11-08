@@ -2199,6 +2199,16 @@ impl AcpConnection {
         let cancel_token = CancellationToken::new();
 
         self.open_session(&session_id).await?;
+        let mut session = self
+            .services
+            .session_manager
+            .get_session(&session_id, false)
+            .await
+            .map_err(|_| {
+                agent_client_protocol::Error::resource_not_found(Some(session_id.clone()))
+                    .data(format!("Session not found: {}", session_id))
+            })?;
+        self.unarchive_session_if_archived(&mut session).await?;
         self.start_active_run(&session_id, run_id.clone(), cancel_token.clone())
             .await?;
 

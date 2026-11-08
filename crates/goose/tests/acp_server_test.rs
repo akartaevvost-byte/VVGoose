@@ -402,6 +402,45 @@ fn test_list_sessions_filters_archived_sessions() {
 }
 
 #[test]
+fn test_load_session_unarchives_archived_session() {
+    run_test(async {
+        let data_root = tempfile::tempdir().unwrap();
+        let cwd = Path::new("/tmp/acp-load-unarchive");
+        let session_manager = SessionManager::new(data_root.path().to_path_buf());
+        let session = session_manager
+            .create_session(
+                cwd.to_path_buf(),
+                "Archived chat".to_string(),
+                SessionType::User,
+                GooseMode::default(),
+            )
+            .await
+            .unwrap();
+        session_manager
+            .add_message(&session.id, &Message::user().with_text("archived turn"))
+            .await
+            .unwrap();
+        session_manager
+            .update(&session.id)
+            .archived_at(Some(chrono::Utc::now()))
+            .apply()
+            .await
+            .unwrap();
+        drop(session_manager);
+
+        let mut conn = new_connection(data_root.path()).await;
+        conn.load_session(&session.id, vec![]).await.unwrap();
+
+        let session_manager = SessionManager::new(data_root.path().to_path_buf());
+        let reloaded = session_manager
+            .get_session(&session.id, false)
+            .await
+            .unwrap();
+        assert!(reloaded.archived_at.is_none());
+    });
+}
+
+#[test]
 fn test_list_sessions_query_filters_results() {
     run_test(async {
         let data_root = tempfile::tempdir().unwrap();

@@ -32,6 +32,7 @@ export const EditorTabs: React.FC = () => {
       previousLabel="Предыдущие вкладки"
       nextLabel="Следующие вкладки"
       revealKey={activeFilePath ?? ''}
+      tabsKey={openFiles.map((tab) => tab.path).join('\0')}
     >
       {openFiles.map((tab) => {
         const isActive = tab.path === activeFilePath;

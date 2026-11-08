@@ -54,7 +54,7 @@ describe('ChatTabs', () => {
 
   it('shows open chats and scrolls them with the same side buttons as the editor', () => {
     const readScrollLeft = mockStripSize({ client: 100, scroll: 500 });
-    render(<ChatTabs sessionIds={['chat-1', 'chat-2', 'chat-3', 'chat-4']} />);
+    const view = render(<ChatTabs sessionIds={['chat-1', 'chat-2', 'chat-3', 'chat-4']} />);
 
     expect(screen.getByText('chat-1')).toBeTruthy();
     expect(screen.getByText('chat-2')).toBeTruthy();
@@ -62,6 +62,8 @@ describe('ChatTabs', () => {
     expect(scroller.className).toContain('overflow-x-hidden');
 
     fireEvent.click(screen.getByRole('button', { name: 'Следующие чаты' }));
+    expect(readScrollLeft()).toBe(120);
+    view.rerender(<ChatTabs sessionIds={['chat-1', 'chat-2', 'chat-3', 'chat-4']} />);
     expect(readScrollLeft()).toBe(120);
     expect(screen.getByRole('button', { name: 'Предыдущие чаты' })).toHaveProperty(
       'disabled',

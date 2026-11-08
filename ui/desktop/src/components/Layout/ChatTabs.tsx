@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { MessageSquare, X } from 'lucide-react';
 import { AppEvents } from '../../constants/events';
@@ -22,23 +22,37 @@ interface ChatTabsProps {
   sessionIds: string[];
 }
 
+function incomingSessionIds(sessionIds: string[], currentSessionId: string | null): string[] {
+  const incomingIds = [...sessionIds];
+  if (currentSessionId && !incomingIds.includes(currentSessionId)) {
+    incomingIds.push(currentSessionId);
+  }
+  return incomingIds;
+}
+
+function reconcileSessionOrder(previous: string[], incoming: string[]): string[] {
+  const keptIds = previous.filter((sessionId) => incoming.includes(sessionId));
+  const addedIds = incoming.filter((sessionId) => !keptIds.includes(sessionId));
+  return [...keptIds, ...addedIds];
+}
+
 export const ChatTabs: React.FC<ChatTabsProps> = ({ sessionIds }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
-  const orderRef = useRef<string[]>([]);
   const currentSessionId =
     location.pathname === '/pair' ? searchParams.get('resumeSessionId') : null;
-
-  const incomingIds = [...sessionIds];
-  if (currentSessionId && !incomingIds.includes(currentSessionId)) {
-    incomingIds.push(currentSessionId);
+  const incomingIds = incomingSessionIds(sessionIds, currentSessionId);
+  const incomingKey = incomingIds.join('\0');
+  const [storedOrder, setStoredOrder] = useState(incomingIds);
+  const [seenKey, setSeenKey] = useState(incomingKey);
+  let openSessionIds = storedOrder;
+  if (incomingKey !== seenKey) {
+    openSessionIds = reconcileSessionOrder(storedOrder, incomingIds);
+    setSeenKey(incomingKey);
+    setStoredOrder(openSessionIds);
   }
-  const keptIds = orderRef.current.filter((sessionId) => incomingIds.includes(sessionId));
-  const addedIds = incomingIds.filter((sessionId) => !keptIds.includes(sessionId));
-  const openSessionIds = [...keptIds, ...addedIds];
-  orderRef.current = openSessionIds;
 
   useEffect(() => {
     if (!pendingCloseId || currentSessionId === pendingCloseId) return;
@@ -70,6 +84,7 @@ export const ChatTabs: React.FC<ChatTabsProps> = ({ sessionIds }) => {
       previousLabel="Предыдущие чаты"
       nextLabel="Следующие чаты"
       revealKey={currentSessionId ?? ''}
+      tabsKey={openSessionIds.join('\0')}
     >
       {openSessionIds.map((sessionId) => {
         const isActive = sessionId === currentSessionId;

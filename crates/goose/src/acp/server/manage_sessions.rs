@@ -264,4 +264,24 @@ impl AcpConnection {
             .internal_err()?;
         Ok(EmptyResponse {})
     }
+
+    /// Resuming an archived session (load or prompt) makes it active again, so
+    /// messages can never silently accumulate in a session hidden from lists.
+    pub(super) async fn unarchive_session_if_archived(
+        &self,
+        session: &mut Session,
+    ) -> Result<(), agent_client_protocol::Error> {
+        if session.archived_at.is_none() {
+            return Ok(());
+        }
+        self.services
+            .session_manager
+            .update(&session.id)
+            .archived_at(None)
+            .apply()
+            .await
+            .internal_err()?;
+        session.archived_at = None;
+        Ok(())
+    }
 }

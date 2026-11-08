@@ -25,6 +25,7 @@ interface TabStripProps {
   previousLabel: string;
   nextLabel: string;
   revealKey: string;
+  tabsKey: string;
   children: React.ReactNode;
 }
 
@@ -33,6 +34,7 @@ export const TabStrip: React.FC<TabStripProps> = ({
   previousLabel,
   nextLabel,
   revealKey,
+  tabsKey,
   children,
 }) => {
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -65,7 +67,7 @@ export const TabStrip: React.FC<TabStripProps> = ({
 
   useLayoutEffect(() => {
     revealActiveTab();
-  }, [revealKey, children, revealActiveTab]);
+  }, [revealKey, tabsKey, revealActiveTab]);
 
   useLayoutEffect(() => {
     const container = tabsContainerRef.current;

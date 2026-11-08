@@ -3239,6 +3239,15 @@ async function appMain() {
     });
   });
 
+  ipcMain.on('broadcast-session-list-change', (event, change) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.id !== senderWindow?.id) {
+        window.webContents.send('session-list-changed', change);
+      }
+    }
+  });
+
   ipcMain.on('reload-app', (event) => {
     // Get the window that sent the event
     const window = BrowserWindow.fromWebContents(event.sender);

@@ -383,6 +383,8 @@ impl AcpConnection {
                     .data(format!("Session not found: {}", session_id_str))
             })?;
 
+        self.unarchive_session_if_archived(&mut session).await?;
+
         let cwd = effective_session_cwd(self.session_cwd.as_deref(), &args.cwd);
         validate_absolute_cwd(&cwd)?;
 

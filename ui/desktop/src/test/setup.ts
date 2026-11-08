@@ -89,6 +89,8 @@ Object.defineProperty(window, 'electron', {
     }),
     broadcastModelAndProviderChange: vi.fn(),
     onModelAndProviderChange: vi.fn(() => () => {}),
+    broadcastSessionListChange: vi.fn(),
+    onSessionListChange: vi.fn(() => () => {}),
     reloadApp: vi.fn(),
     checkForOllama: vi.fn(() => Promise.resolve(true)),
     isCommandAvailable: vi.fn((cmd: string) => Promise.resolve(cmd === 'ollama')),
