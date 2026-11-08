@@ -20,6 +20,12 @@ interface MockTerminalInstance {
   dispose: ReturnType<typeof vi.fn>;
   hasSelection: ReturnType<typeof vi.fn>;
   getSelection: ReturnType<typeof vi.fn>;
+  buffer?: {
+    active: {
+      length: number;
+      getLine: (idx: number) => { translateToString: (trimRight?: boolean) => string } | undefined;
+    };
+  };
 }
 
 interface MockWebglInstance {
@@ -58,6 +64,15 @@ vi.mock('@xterm/xterm', () => ({
       dispose: vi.fn(),
       hasSelection: vi.fn().mockReturnValue(false),
       getSelection: vi.fn().mockReturnValue(''),
+      buffer: {
+        active: {
+          length: 2,
+          getLine: vi.fn((idx: number) => ({
+            translateToString: (_trimRight?: boolean) =>
+              idx === 0 ? 'output line 1' : 'output line 2',
+          })),
+        },
+      },
     };
     terminalInstances.push(instance);
     return instance;
@@ -116,11 +131,16 @@ vi.mock('@xterm/addon-web-links', () => ({
   }),
 }));
 
-const mockRegisterClearHandler = vi.fn(() => () => {});
+const mockRegisterClearHandler = vi.fn((_id: string, _handler: () => void) => () => {});
+const mockRegisterSelectionGetter = vi.fn(
+  (_id: string, _getter: () => string): (() => void) =>
+    () => {}
+);
 
 vi.mock('../../contexts/TerminalContext', () => ({
   useTerminal: () => ({
     registerClearHandler: mockRegisterClearHandler,
+    registerSelectionGetter: mockRegisterSelectionGetter,
     terminalFontSize: mockTerminalFontSize,
   }),
 }));
@@ -304,6 +324,25 @@ describe('TerminalInstance', () => {
       expect(termInstance.dispose).toHaveBeenCalledTimes(1);
       expect(webglInstance.dispose).toHaveBeenCalledTimes(1);
       expect(mockResizeObserverDisconnect).toHaveBeenCalled();
+    });
+
+    it('registers a selection and buffer getter for Ask Goose functionality', () => {
+      render(<TerminalInstance id="term-ask-goose" active={true} />);
+
+      expect(mockRegisterSelectionGetter).toHaveBeenCalledWith(
+        'term-ask-goose',
+        expect.any(Function)
+      );
+
+      const getter = mockRegisterSelectionGetter.mock.calls[0][1] as () => string;
+      const termInstance = terminalInstances[0];
+
+      // When selection is empty, falls back to active buffer
+      expect(getter()).toBe('output line 1\noutput line 2');
+
+      // When user highlights text, returns selection
+      termInstance.getSelection.mockReturnValueOnce('user highlighted error');
+      expect(getter()).toBe('user highlighted error');
     });
   });
 });

@@ -151,6 +151,19 @@ export default function Hub({
     return () => cancelAnimationFrame(frameId);
   }, []);
 
+  const [pendingQuote, setPendingQuote] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleAppendToChat = (e: Event) => {
+      const customEvent = e as CustomEvent<{ text: string; sessionId?: string }>;
+      if (customEvent.detail?.text) {
+        setPendingQuote(customEvent.detail.text);
+      }
+    };
+    window.addEventListener('goose:append-to-chat', handleAppendToChat);
+    return () => window.removeEventListener('goose:append-to-chat', handleAppendToChat);
+  }, []);
+
   const handleNextChatExtensionDraftChange = useCallback((draft: NextChatExtensionDraft) => {
     setNextChatExtensionDraft(draft);
   }, []);
@@ -293,6 +306,8 @@ export default function Hub({
               stop: liveVoice.stop,
               toggleMute: liveVoice.toggleMute,
             }}
+            appendQuote={pendingQuote}
+            onAppendQuoteConsumed={() => setPendingQuote(null)}
           />
         </ChatInputCard>
       </div>

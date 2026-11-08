@@ -43,6 +43,7 @@ describe('TerminalPanel', () => {
       sendToChat: vi.fn(),
       runCommand: vi.fn(),
       registerClearHandler: vi.fn(),
+      registerSelectionGetter: vi.fn(),
       createTerminal: mockCreateTerminal,
       updateSessionExitCode: mockUpdateSessionExitCode,
     });
@@ -88,6 +89,7 @@ describe('TerminalPanel', () => {
       sendToChat: vi.fn(),
       runCommand: vi.fn(),
       registerClearHandler: vi.fn(),
+      registerSelectionGetter: vi.fn(),
       createTerminal: mockCreateTerminal,
       updateSessionExitCode: mockUpdateSessionExitCode,
     });

@@ -235,4 +235,46 @@ describe('TerminalContext', () => {
 
     window.removeEventListener('goose:append-to-chat', eventSpy);
   });
+
+  it('uses registered selection getter when sendToChat is called without arguments', () => {
+    const { result } = renderHook(() => useTerminal(), { wrapper });
+    let terminalId = '';
+    act(() => {
+      terminalId = result.current.createTerminal();
+    });
+
+    const eventSpy = vi.fn();
+    window.addEventListener('goose:append-to-chat', eventSpy);
+
+    // Register getter
+    let unregister: (() => void) | undefined;
+    act(() => {
+      unregister = result.current.registerSelectionGetter(
+        terminalId,
+        () => 'npm ERR! build failed'
+      );
+    });
+
+    // Call sendToChat() without arguments (like Ask Goose button)
+    act(() => {
+      result.current.sendToChat();
+    });
+
+    expect(eventSpy).toHaveBeenCalledTimes(1);
+    const event = eventSpy.mock.calls[0][0] as CustomEvent;
+    expect(event.detail.text).toBe('```\nnpm ERR! build failed\n```');
+
+    // After unregistering, calling sendToChat does not dispatch empty events
+    act(() => {
+      unregister?.();
+    });
+
+    act(() => {
+      result.current.sendToChat();
+    });
+
+    expect(eventSpy).toHaveBeenCalledTimes(1);
+
+    window.removeEventListener('goose:append-to-chat', eventSpy);
+  });
 });

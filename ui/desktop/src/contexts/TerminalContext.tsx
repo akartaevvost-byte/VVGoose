@@ -221,6 +221,13 @@ export const TerminalProvider: React.FC<TerminalProviderProps> = ({ children }) 
     };
   }, []);
 
+  const registerSelectionGetter = useCallback((id: string, getter: () => string) => {
+    selectionGettersRef.current.set(id, getter);
+    return () => {
+      selectionGettersRef.current.delete(id);
+    };
+  }, []);
+
   const clearActiveTerminal = useCallback(() => {
     if (activeTerminalId) {
       const handler = clearHandlersRef.current.get(activeTerminalId);
@@ -306,6 +313,7 @@ export const TerminalProvider: React.FC<TerminalProviderProps> = ({ children }) 
     sendToChat,
     runCommand,
     registerClearHandler,
+    registerSelectionGetter,
     updateSessionExitCode,
     terminalFontSize,
     setTerminalFontSize,

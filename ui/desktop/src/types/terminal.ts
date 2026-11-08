@@ -34,6 +34,7 @@ export interface TerminalContextType {
   sendToChat: (text?: string) => void;
   runCommand: (command: string, autoExecute?: boolean) => void;
   registerClearHandler: (id: string, handler: () => void) => () => void;
+  registerSelectionGetter: (id: string, getter: () => string) => () => void;
   updateSessionExitCode: (id: string, exitCode: number) => void;
   terminalFontSize?: number;
   setTerminalFontSize?: (size: number | ((prev: number) => number)) => void;

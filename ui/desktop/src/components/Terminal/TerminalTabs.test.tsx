@@ -71,6 +71,7 @@ describe('TerminalTabs', () => {
       setTerminalHeight: vi.fn(),
       runCommand: vi.fn(),
       registerClearHandler: vi.fn(),
+      registerSelectionGetter: vi.fn(),
       updateSessionExitCode: vi.fn(),
       setActiveTerminalId: mockSetActiveTerminalId,
       createTerminal: mockCreateTerminal,

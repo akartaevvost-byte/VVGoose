@@ -40,7 +40,7 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const { registerClearHandler, terminalFontSize } = useTerminal();
+  const { registerClearHandler, registerSelectionGetter, terminalFontSize } = useTerminal();
 
   const fontSize = propFontSize ?? terminalFontSize ?? 12;
 
@@ -244,6 +244,45 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
       terminalRef.current?.clear();
     });
   }, [id, registerClearHandler]);
+
+  // Register selection and recent output buffer getter for "Ask Goose" (sendToChat)
+  useEffect(() => {
+    return registerSelectionGetter?.(id, () => {
+      const term = terminalRef.current;
+      if (!term) return '';
+
+      // Priority 1: User's highlighted selection
+      const selection = term.getSelection();
+      if (selection && selection.trim()) {
+        return selection.trim();
+      }
+
+      // Priority 2: Recent lines from the active terminal buffer
+      const buffer = term.buffer.active;
+      let lastNonEmptyIndex = buffer.length - 1;
+      while (lastNonEmptyIndex >= 0) {
+        const line = buffer.getLine(lastNonEmptyIndex);
+        if (line && line.translateToString(true).trim()) {
+          break;
+        }
+        lastNonEmptyIndex--;
+      }
+
+      if (lastNonEmptyIndex < 0) return '';
+
+      const maxLines = 50;
+      const startLineIndex = Math.max(0, lastNonEmptyIndex - maxLines + 1);
+      const lines: string[] = [];
+      for (let i = startLineIndex; i <= lastNonEmptyIndex; i++) {
+        const line = buffer.getLine(i);
+        if (line) {
+          lines.push(line.translateToString(true));
+        }
+      }
+
+      return lines.join('\n').trim();
+    });
+  }, [id, registerSelectionGetter]);
 
   // When tab becomes active, re-fit and focus
   useEffect(() => {
