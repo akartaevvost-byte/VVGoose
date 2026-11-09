@@ -29,6 +29,7 @@ use super::{
     nanogpt::NanoGptProvider,
     pi_acp::PiAcpProvider,
     provider_registry::ProviderRegistry,
+    red_mad_router::RedMadRouterProvider,
     snowflake_def::SnowflakeProviderDef,
     tetrate::TetrateProvider,
     xai::XaiProvider,
@@ -144,6 +145,18 @@ async fn init_registry() -> RwLock<ProviderRegistry> {
                     .is_ok()
                     || config
                         .get_secret::<serde_json::Value>("LITELLM_API_KEY")
+                        .is_ok()
+            })),
+        );
+        registry.register_with_inventory::<RedMadRouterProvider>(
+            true,
+            Some(registrations::refresh_only().with_configured(|| {
+                let config = crate::config::Config::global();
+                config
+                    .get_secret::<serde_json::Value>("RED_MAD_ROUTER_API_KEY")
+                    .is_ok()
+                    || config
+                        .get_param::<serde_json::Value>("RED_MAD_ROUTER_HOST")
                         .is_ok()
             })),
         );
@@ -570,6 +583,17 @@ mod tests {
         assert!(
             entry.supports_inventory_refresh(),
             "litellm must support inventory refresh so the model picker calls fetch_supported_models"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_red_mad_router_supports_inventory_refresh() {
+        let entry = get_from_registry("red_mad_router")
+            .await
+            .expect("red_mad_router should be registered");
+        assert!(
+            entry.supports_inventory_refresh(),
+            "red_mad_router must support inventory refresh so the model picker calls fetch_supported_models"
         );
     }
 

@@ -28,7 +28,7 @@ impl CacheSemantics {
             "aws_bedrock" | "databricks" | "gcp_vertex_ai" if model_name.contains("claude") => {
                 CacheSemantics::ExplicitBreakpoints { max_breakpoints: 4 }
             }
-            "openrouter" | "litellm" if model_name.starts_with("anthropic/") => {
+            "openrouter" | "litellm" | "red_mad_router" if model_name.starts_with("anthropic/") => {
                 CacheSemantics::ExplicitBreakpoints { max_breakpoints: 4 }
             }
             "openai" | "azure_openai" | "github_copilot" => {

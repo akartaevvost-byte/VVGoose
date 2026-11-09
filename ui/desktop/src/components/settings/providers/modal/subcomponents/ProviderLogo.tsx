@@ -10,6 +10,7 @@ import XaiLogo from './icons/xai@3x.png';
 import MiniMaxLogo from './icons/minimax@3x.png';
 import TanzuLogo from './icons/tanzu@3x.png';
 import AzureFoundryLogo from './icons/azure_foundry@3x.png';
+import RedMadRouterLogo from './icons/red_mad_router@3x.png';
 import DefaultLogo from './icons/default@3x.png';
 import { defineMessages, useIntl } from '../../../../../i18n';
 
@@ -34,6 +35,7 @@ const providerLogos: Record<string, string> = {
   minimax: MiniMaxLogo,
   tanzu_ai: TanzuLogo,
   azure_foundry: AzureFoundryLogo,
+  red_mad_router: RedMadRouterLogo,
   default: DefaultLogo,
 };
 

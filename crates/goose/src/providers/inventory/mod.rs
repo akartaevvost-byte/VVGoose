@@ -1065,7 +1065,7 @@ fn enrich_model_ids_with_canonical(
     provider_family: &str,
     model_ids: &[String],
 ) -> Vec<InventoryModel> {
-    if provider_family == "litellm" {
+    if provider_family == "litellm" || provider_family == "red_mad_router" {
         return model_ids
             .iter()
             .map(|id| InventoryModel {
