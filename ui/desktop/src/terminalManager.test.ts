@@ -115,4 +115,76 @@ describe('TerminalManager', () => {
     expect(mockPty2.kill).toHaveBeenCalled();
     expect(manager.getSessionCount()).toBe(0);
   });
+
+  it('gracefully awaits process exit on killAllAsync', async () => {
+    let exitCb1: ((e: { exitCode: number }) => void) | undefined;
+    let exitCb2: ((e: { exitCode: number }) => void) | undefined;
+
+    const mockPty1 = {
+      onData: vi.fn(),
+      onExit: vi.fn((cb) => {
+        exitCb1 = cb;
+        return { dispose: vi.fn() };
+      }),
+      kill: vi.fn(() => {
+        // Simulate asynchronous process death after kill
+        setTimeout(() => exitCb1?.({ exitCode: 0 }), 10);
+      }),
+    };
+    const mockPty2 = {
+      onData: vi.fn(),
+      onExit: vi.fn((cb) => {
+        exitCb2 = cb;
+        return { dispose: vi.fn() };
+      }),
+      kill: vi.fn(() => {
+        setTimeout(() => exitCb2?.({ exitCode: 0 }), 10);
+      }),
+    };
+
+    vi.mocked(pty.spawn)
+      .mockReturnValueOnce(mockPty1 as unknown as pty.IPty)
+      .mockReturnValueOnce(mockPty2 as unknown as pty.IPty);
+
+    await manager.createTerminal({ id: 'term-1' }, vi.fn(), vi.fn());
+    await manager.createTerminal({ id: 'term-2' }, vi.fn(), vi.fn());
+
+    expect(manager.getSessionCount()).toBe(2);
+
+    await manager.killAllAsync(100);
+
+    expect(mockPty1.kill).toHaveBeenCalled();
+    expect(mockPty2.kill).toHaveBeenCalled();
+    expect(manager.getSessionCount()).toBe(0);
+  });
+
+  it('disposes listeners when pty exits', async () => {
+    const disposeData = vi.fn();
+    const disposeExit = vi.fn();
+    let exitCallback: ((e: { exitCode: number }) => void) | undefined;
+
+    const mockPty = {
+      onData: vi.fn().mockReturnValue({ dispose: disposeData }),
+      onExit: vi.fn((cb) => {
+        exitCallback = cb;
+        return { dispose: disposeExit };
+      }),
+      kill: vi.fn(),
+    };
+
+    vi.mocked(pty.spawn).mockReturnValue(mockPty as unknown as pty.IPty);
+
+    const onExit = vi.fn();
+    await manager.createTerminal({ id: 'term-exit' }, vi.fn(), onExit);
+
+    expect(manager.hasSession('term-exit')).toBe(true);
+
+    // Trigger exit
+    exitCallback?.({ exitCode: 130 });
+
+    expect(onExit).toHaveBeenCalledWith(130);
+    expect(disposeData).toHaveBeenCalled();
+    expect(disposeExit).toHaveBeenCalled();
+    expect(manager.hasSession('term-exit')).toBe(false);
+  });
 });

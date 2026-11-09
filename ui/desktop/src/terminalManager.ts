@@ -10,6 +10,10 @@ interface PtySession {
   pty: pty.IPty;
   shell: string;
   cwd: string;
+  disposables: Array<() => void>;
+  exitPromise: Promise<number>;
+  resolveExit: (code: number) => void;
+  isKilled: boolean;
 }
 
 export class TerminalManager {
@@ -98,19 +102,65 @@ export class TerminalManager {
         env,
       });
 
-      ptyProcess.onData((data: string) => {
-        onData(data);
+      let resolveExit!: (code: number) => void;
+      const exitPromise = new Promise<number>((resolve) => {
+        resolveExit = resolve;
       });
 
-      ptyProcess.onExit(({ exitCode }: { exitCode: number }) => {
-        this.sessions.delete(id);
-        onExit(exitCode);
+      const disposables: Array<() => void> = [];
+
+      const dataDisposable = ptyProcess.onData((data: string) => {
+        try {
+          onData(data);
+        } catch (err) {
+          log.warn(`Error handling data for terminal ${id}:`, err);
+        }
       });
+      if (dataDisposable && typeof dataDisposable.dispose === 'function') {
+        disposables.push(() => {
+          try {
+            dataDisposable.dispose();
+          } catch {
+            // Ignore disposal errors
+          }
+        });
+      }
+
+      const exitDisposable = ptyProcess.onExit(({ exitCode }: { exitCode: number }) => {
+        try {
+          resolveExit(exitCode);
+          this.sessions.delete(id);
+          onExit(exitCode);
+        } catch (err) {
+          log.warn(`Error handling exit for terminal ${id}:`, err);
+        } finally {
+          for (const dispose of disposables) {
+            try {
+              dispose();
+            } catch {
+              // Ignore disposal errors
+            }
+          }
+        }
+      });
+      if (exitDisposable && typeof exitDisposable.dispose === 'function') {
+        disposables.push(() => {
+          try {
+            exitDisposable.dispose();
+          } catch {
+            // Ignore disposal errors
+          }
+        });
+      }
 
       this.sessions.set(id, {
         pty: ptyProcess,
         shell,
         cwd,
+        disposables,
+        exitPromise,
+        resolveExit,
+        isKilled: false,
       });
     } catch (error) {
       log.error(`Failed to spawn terminal process for session ${id}:`, error);
@@ -143,26 +193,99 @@ export class TerminalManager {
   kill(id: string): boolean {
     const session = this.sessions.get(id);
     if (session) {
+      session.isKilled = true;
       try {
         session.pty.kill();
       } catch (err) {
         log.error(`Failed to kill terminal session ${id}:`, err);
       } finally {
         this.sessions.delete(id);
+        for (const dispose of session.disposables) {
+          try {
+            dispose();
+          } catch {
+            // Ignore
+          }
+        }
       }
       return true;
     }
     return false;
   }
 
+  async killAsync(id: string, timeoutMs: number = 300): Promise<void> {
+    const session = this.sessions.get(id);
+    if (!session) return;
+
+    session.isKilled = true;
+    try {
+      session.pty.kill();
+    } catch (err) {
+      log.warn(`Failed initial kill for terminal session ${id}:`, err);
+    }
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), Math.min(timeoutMs, 150));
+    });
+
+    const exited = await Promise.race([session.exitPromise.then(() => true), timeoutPromise]);
+    if (timer) clearTimeout(timer);
+
+    if (!exited && process.platform !== 'win32') {
+      try {
+        session.pty.kill('SIGKILL');
+      } catch {
+        // Ignore if already dead
+      }
+
+      let killTimer: ReturnType<typeof setTimeout> | null = null;
+      const killTimeoutPromise = new Promise<boolean>((resolve) => {
+        killTimer = setTimeout(() => resolve(false), timeoutMs);
+      });
+      await Promise.race([session.exitPromise.then(() => true), killTimeoutPromise]);
+      if (killTimer) clearTimeout(killTimer);
+    }
+
+    this.sessions.delete(id);
+    for (const dispose of session.disposables) {
+      try {
+        dispose();
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
   killAll(): void {
     for (const [id, session] of this.sessions.entries()) {
+      session.isKilled = true;
       try {
-        session.pty.kill();
+        if (process.platform !== 'win32') {
+          session.pty.kill('SIGKILL');
+        } else {
+          session.pty.kill();
+        }
       } catch (err) {
         log.error(`Failed to kill terminal session ${id} during cleanup:`, err);
       }
+      for (const dispose of session.disposables) {
+        try {
+          dispose();
+        } catch {
+          // Ignore
+        }
+      }
     }
+    this.sessions.clear();
+  }
+
+  async killAllAsync(timeoutMs: number = 500): Promise<void> {
+    const sessionIds = Array.from(this.sessions.keys());
+    if (sessionIds.length === 0) return;
+
+    log.info(`Tearing down ${sessionIds.length} active terminal session(s)...`);
+    await Promise.allSettled(sessionIds.map((id) => this.killAsync(id, timeoutMs)));
     this.sessions.clear();
   }
 
@@ -185,16 +308,32 @@ export function registerTerminalIpcHandlers(manager: TerminalManager = terminalM
 
   ipcMain.handle('terminal:create', async (event, options: TerminalCreateOptions) => {
     const webContents = event.sender;
+    const sessionId = options.id;
+
+    const onWebContentsDestroyed = () => {
+      manager.kill(sessionId);
+    };
+    webContents.once('destroyed', onWebContentsDestroyed);
+
     await manager.createTerminal(
       options,
       (data) => {
-        if (!webContents.isDestroyed()) {
-          webContents.send(`terminal:data:${options.id}`, data);
+        try {
+          if (!webContents.isDestroyed()) {
+            webContents.send(`terminal:data:${sessionId}`, data);
+          }
+        } catch {
+          // Ignore send errors if webContents is in teardown
         }
       },
       (exitCode) => {
-        if (!webContents.isDestroyed()) {
-          webContents.send(`terminal:exit:${options.id}`, exitCode);
+        webContents.removeListener('destroyed', onWebContentsDestroyed);
+        try {
+          if (!webContents.isDestroyed()) {
+            webContents.send(`terminal:exit:${sessionId}`, exitCode);
+          }
+        } catch {
+          // Ignore send errors if webContents is in teardown
         }
       }
     );
@@ -213,7 +352,20 @@ export function registerTerminalIpcHandlers(manager: TerminalManager = terminalM
     return manager.kill(id);
   });
 
-  app.on('before-quit', () => {
-    manager.killAll();
+  let isQuitting = false;
+  app.on('before-quit', (event) => {
+    if (isQuitting) return;
+    if (manager.getSessionCount() > 0) {
+      event.preventDefault();
+      isQuitting = true;
+      manager
+        .killAllAsync(500)
+        .catch((err) => {
+          log.error('Error during terminal manager killAllAsync:', err);
+        })
+        .finally(() => {
+          app.quit();
+        });
+    }
   });
 }
