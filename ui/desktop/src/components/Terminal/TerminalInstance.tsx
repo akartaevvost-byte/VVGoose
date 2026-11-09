@@ -18,7 +18,7 @@ export interface TerminalInstanceProps {
   onExit?: (exitCode: number) => void;
 }
 
-export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
+const TerminalInstanceComponent: React.FC<TerminalInstanceProps> = ({
   id,
   active,
   fontSize: propFontSize,
@@ -27,6 +27,8 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
   const { registerClearHandler, registerSelectionGetter, terminalFontSize } = useTerminal();
 
   const fontSize = propFontSize ?? terminalFontSize ?? 12;
@@ -106,14 +108,19 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
       return false;
     });
 
-    // Connect @xterm/addon-webgl with error fallback and context loss handling
+    // Connect @xterm/addon-webgl with preserveDrawingBuffer and context loss handling
     let webglAddon: WebglAddon | null = null;
     try {
-      webglAddon = new WebglAddon();
+      webglAddon = new WebglAddon(true);
       webglAddon.onContextLoss(() => {
         console.warn('[Terminal] WebGL context lost, falling back to canvas/DOM');
         webglAddon?.dispose();
         webglAddon = null;
+        try {
+          term.refresh(0, term.rows - 1);
+        } catch {
+          // Ignored
+        }
       });
       term.loadAddon(webglAddon);
     } catch (e) {
@@ -184,7 +191,7 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
     if (window?.electron?.onTerminalExit) {
       cleanupExit = window.electron.onTerminalExit(id, (exitCode) => {
         term.writeln(`\r\n\x1b[90m[Process completed with exit code ${exitCode}]\x1b[0m`);
-        onExit?.(exitCode);
+        onExitRef.current?.(exitCode);
       });
     }
 
@@ -223,8 +230,18 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
     });
     resizeObserver.observe(containerRef.current);
 
+    const handleWindowFocus = () => {
+      try {
+        term.refresh(0, term.rows - 1);
+      } catch {
+        // Ignored
+      }
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
     return () => {
       clearTimeout(initialTimer);
+      window.removeEventListener('focus', handleWindowFocus);
       themeObserver.disconnect();
       resizeObserver.disconnect();
       osc10Disposable?.dispose();
@@ -241,7 +258,7 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
     };
     // fontSize changes are dynamically handled below without recreating terminal session
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, onExit]);
+  }, [id]);
 
   // Dynamically update terminal font size when changed without recreating session
   const isInitialMount = useRef(true);
@@ -309,13 +326,14 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
     });
   }, [id, registerSelectionGetter]);
 
-  // When tab becomes active, re-fit and focus
+  // When tab becomes active, re-fit, refresh, and focus
   useEffect(() => {
     if (!active || !fitAddonRef.current || !terminalRef.current) return;
 
     const timer = setTimeout(() => {
       try {
         fitAddonRef.current?.fit();
+        terminalRef.current?.refresh(0, terminalRef.current.rows - 1);
         terminalRef.current?.focus();
         if (window?.electron?.terminalResize && terminalRef.current) {
           window.electron.terminalResize(id, terminalRef.current.cols, terminalRef.current.rows);
@@ -335,3 +353,5 @@ export const TerminalInstance: React.FC<TerminalInstanceProps> = ({
     />
   );
 };
+
+export const TerminalInstance = React.memo(TerminalInstanceComponent);

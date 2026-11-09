@@ -17,6 +17,7 @@ interface MockTerminalInstance {
   writeln: ReturnType<typeof vi.fn>;
   clear: ReturnType<typeof vi.fn>;
   focus: ReturnType<typeof vi.fn>;
+  refresh: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   hasSelection: ReturnType<typeof vi.fn>;
   getSelection: ReturnType<typeof vi.fn>;
@@ -64,6 +65,7 @@ vi.mock('@xterm/xterm', () => ({
       writeln: vi.fn(),
       clear: vi.fn(),
       focus: vi.fn(),
+      refresh: vi.fn(),
       dispose: vi.fn(),
       hasSelection: vi.fn().mockReturnValue(false),
       getSelection: vi.fn().mockReturnValue(''),
@@ -275,6 +277,7 @@ describe('TerminalInstance', () => {
       });
 
       expect(webglInstance.dispose).toHaveBeenCalledTimes(1);
+      expect(terminalInstances[0].refresh).toHaveBeenCalled();
     });
 
     it('catches WebglAddon instantiation error and gracefully falls back to default renderer', () => {
@@ -340,6 +343,19 @@ describe('TerminalInstance', () => {
       expect(termInstance.dispose).toHaveBeenCalledTimes(1);
       expect(webglInstance.dispose).toHaveBeenCalledTimes(1);
       expect(mockResizeObserverDisconnect).toHaveBeenCalled();
+    });
+
+    it('does not recreate Terminal when onExit callback changes', () => {
+      const onExit1 = vi.fn();
+      const onExit2 = vi.fn();
+      const { rerender } = render(
+        <TerminalInstance id="term-stable" active={true} onExit={onExit1} />
+      );
+      expect(terminalInstances).toHaveLength(1);
+
+      rerender(<TerminalInstance id="term-stable" active={true} onExit={onExit2} />);
+      expect(terminalInstances).toHaveLength(1);
+      expect(terminalInstances[0].dispose).not.toHaveBeenCalled();
     });
 
     it('registers a selection and buffer getter for Ask Goose functionality', () => {
