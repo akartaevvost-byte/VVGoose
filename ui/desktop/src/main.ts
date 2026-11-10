@@ -1515,6 +1515,14 @@ const createChat = async (
   windowMap.set(windowId, mainWindow);
   addWorkspaceRootForWindow(windowId, workingDir);
 
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error(`[Main] Window ${windowId} renderer process gone:`, details);
+  });
+
+  mainWindow.on('unresponsive', () => {
+    log.warn(`[Main] Window ${windowId} became unresponsive`);
+  });
+
   // Handle window closure
   mainWindow.on('closed', () => {
     windowMap.delete(windowId);

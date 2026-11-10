@@ -129,28 +129,6 @@ export const ChatTabs: React.FC<ChatTabsProps> = ({ sessionIds }) => {
     setStoredOrder(openSessionIds);
   }
 
-  useEffect(() => {
-    if (!pendingCloseId || currentSessionId === pendingCloseId) return;
-    window.dispatchEvent(
-      new CustomEvent(AppEvents.CHAT_TAB_CLOSED, { detail: { sessionId: pendingCloseId } })
-    );
-    setPendingCloseId(null);
-  }, [currentSessionId, pendingCloseId]);
-
-  useEffect(() => {
-    if (currentSessionId) {
-      acpChatSessionActions.markSessionRead(currentSessionId);
-      setActiveSessionId(currentSessionId);
-    } else {
-      setActiveSessionId(null);
-    }
-  }, [currentSessionId]);
-
-  const isOnHubRoute = location.pathname === '/';
-  if (openSessionIds.length === 0 && !isOnHubRoute) {
-    return null;
-  }
-
   const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   const focusInputField = useCallback(() => {
@@ -190,6 +168,28 @@ export const ChatTabs: React.FC<ChatTabsProps> = ({ sessionIds }) => {
     window.addEventListener('chat:open-new-tab', onOpenNewTab);
     return () => window.removeEventListener('chat:open-new-tab', onOpenNewTab);
   }, [handleOpenNewChat]);
+
+  useEffect(() => {
+    if (!pendingCloseId || currentSessionId === pendingCloseId) return;
+    window.dispatchEvent(
+      new CustomEvent(AppEvents.CHAT_TAB_CLOSED, { detail: { sessionId: pendingCloseId } })
+    );
+    setPendingCloseId(null);
+  }, [currentSessionId, pendingCloseId]);
+
+  useEffect(() => {
+    if (currentSessionId) {
+      acpChatSessionActions.markSessionRead(currentSessionId);
+      setActiveSessionId(currentSessionId);
+    } else {
+      setActiveSessionId(null);
+    }
+  }, [currentSessionId]);
+
+  const isOnHubRoute = location.pathname === '/';
+  if (openSessionIds.length === 0 && !isOnHubRoute) {
+    return null;
+  }
 
   const isMac = getIsMac();
 

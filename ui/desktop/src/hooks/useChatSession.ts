@@ -135,7 +135,7 @@ export function useChatSession({
 
       onStreamFinish();
     },
-    [intl, onStreamFinish]
+    [intl, onStreamFinish, sessionId]
   );
 
   const submitToAcpSession = useCallback(

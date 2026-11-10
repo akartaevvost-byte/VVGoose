@@ -13,6 +13,8 @@ import { cancelAcpPermissionRequestsForSession } from '../permissionRequests';
 import { cancelAcpElicitationRequestsForSession } from '../elicitationRequests';
 import { acpChatSessionController } from '../chatSessionController';
 import { ChatState } from '../../types/chatState';
+import type { Session } from '../../types/session';
+import type { AcpPermissionRequest } from '../permissionRequestTypes';
 
 vi.mock('../chatSessionController', () => ({
   acpChatSessionController: {
@@ -78,7 +80,7 @@ describe('Concurrent Chat Tabs Execution & Lifecycle', () => {
     acpChatSessionActions.finishSessionLoad('session-2', {
       id: 'session-2',
       name: 'Session 2',
-    } as any);
+    } as unknown as Session);
 
     // Test eviction selection logic (same as App.tsx)
     const list = sessionIds.map((id) => ({ sessionId: id }));
@@ -113,7 +115,7 @@ describe('Concurrent Chat Tabs Execution & Lifecycle', () => {
     acpChatSessionActions.finishSessionLoad('session-waiting', {
       id: 'session-waiting',
       name: 'Session Waiting',
-    } as any);
+    } as unknown as Session);
     acpChatSessionActions.applyPermissionRequest({
       generation: 'gen-1',
       request: {
@@ -121,7 +123,7 @@ describe('Concurrent Chat Tabs Execution & Lifecycle', () => {
         options: [],
         toolCall: { toolCallId: 'tool-call-1' },
       },
-    } as any);
+    } as unknown as AcpPermissionRequest);
 
     const snap = acpChatSessionStore.getSnapshot('session-waiting')!;
     expect(snap.isWaitingForInput).toBe(true);

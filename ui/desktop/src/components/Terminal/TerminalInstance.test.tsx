@@ -404,6 +404,7 @@ describe('TerminalInstance', () => {
       }
 
       // Query OSC 11 (background color)
+      /* eslint-disable no-control-regex */
       const osc11Handler = handlers.get(11);
       expect(osc11Handler).toBeDefined();
       const handled11 = osc11Handler!('?');
@@ -422,6 +423,7 @@ describe('TerminalInstance', () => {
         'term-osc',
         expect.stringMatching(/^\x1b\]10;rgb:[0-9a-f]{4}\/[0-9a-f]{4}\/[0-9a-f]{4}\x1b\\$/)
       );
+      /* eslint-enable no-control-regex */
 
       // Non-query data should return false
       expect(osc11Handler!('#000000')).toBe(false);

@@ -104,20 +104,24 @@ export class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Send error to main process
-    window.electron.logInfo(`[ERROR] ${error.toString()}\n${errorInfo.componentStack}`);
+    try {
+      // Send error to main process
+      window.electron?.logInfo?.(`[ERROR] ${error.toString()}\n${errorInfo.componentStack}`);
 
-    const componentMatch = errorInfo.componentStack?.match(/^\s*at\s+(\w+)/);
-    const componentName = componentMatch ? componentMatch[1] : undefined;
+      const componentMatch = errorInfo.componentStack?.match(/^\s*at\s+(\w+)/);
+      const componentName = componentMatch ? componentMatch[1] : undefined;
 
-    trackEvent({
-      name: 'app_crashed',
-      properties: {
-        error_type: getErrorType(error),
-        component: componentName,
-        page: getCurrentPage(),
-      },
-    });
+      trackEvent({
+        name: 'app_crashed',
+        properties: {
+          error_type: getErrorType(error),
+          component: componentName,
+          page: getCurrentPage(),
+        },
+      });
+    } catch (loggingError) {
+      console.error('Failed to log error in ErrorBoundary:', loggingError);
+    }
   }
 
   render() {
